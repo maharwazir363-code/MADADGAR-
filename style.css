@@ -1,0 +1,1532 @@
+/* ============================================================
+   MADADGAR — Blue/White theme, instant load (system fonts only)
+   ============================================================ */
+
+:root {
+  --primary: #1e40af;
+  --primary-700: #1d4ed8;
+  --secondary: #dbeafe;
+  --accent: #f59e0b;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --radius: 12px;
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Hidden admin gate — minimalist popup, no admin branding visible */
+.gate-backdrop {
+  align-items: center !important;
+}
+.gate-card {
+  background: var(--bg);
+  width: 90%;
+  max-width: 320px;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+}
+.gate-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+  letter-spacing: 2px;
+}
+.gate-input:focus {
+  border-color: var(--primary);
+}
+.gate-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.gate-row .btn {
+  flex: 1;
+}
+.btn-sm {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  overscroll-behavior-y: contain;
+}
+
+body {
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg);
+  min-height: 100vh;
+  position: relative;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.04);
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12px;
+}
+.center {
+  text-align: center;
+}
+.spaced {
+  margin-top: 12px;
+}
+.link {
+  font-weight: 600;
+}
+
+/* ============================================================
+   Splash
+   ============================================================ */
+.splash {
+  position: fixed;
+  inset: 0;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 9999;
+  transition: opacity 0.25s ease;
+}
+.splash.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--secondary);
+  border-top-color: var(--primary);
+  animation: spin 0.8s linear infinite;
+  margin-top: 14px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================================
+   Screens
+   ============================================================ */
+.screen {
+  display: none;
+  min-height: 100vh;
+  flex-direction: column;
+  background: var(--bg);
+}
+.screen.active {
+  display: flex;
+}
+
+/* ============================================================
+   Auth wrappers
+   ============================================================ */
+.auth-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 24px 36px;
+  background: #fff;
+}
+
+.logo-box {
+  background: var(--primary);
+  color: #fff;
+  padding: 16px 28px;
+  border-radius: 16px;
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: 3px;
+  box-shadow: var(--shadow-md);
+}
+.logo-box.small {
+  font-size: 24px;
+  padding: 12px 20px;
+}
+
+.brand-tag {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+.brand-tag.light {
+  color: rgba(255, 255, 255, 0.85);
+  margin: 4px 0 14px;
+}
+
+.auth-title {
+  margin: 36px 0 4px;
+  font-size: 26px;
+  font-weight: 700;
+}
+.auth-sub {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.back-link {
+  align-self: flex-start;
+  font-size: 14px;
+  color: var(--text);
+  padding: 8px 4px;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+/* ============================================================
+   Forms
+   ============================================================ */
+.form {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin: 14px 0 8px;
+  text-transform: uppercase;
+}
+.field-label:first-child {
+  margin-top: 0;
+}
+
+.input-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1.5px solid var(--input);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.input-box:focus-within {
+  border-color: var(--primary);
+}
+
+.input-box .ic {
+  font-size: 16px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.input-box input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 16px;
+  padding: 4px 0;
+}
+
+.eye-btn {
+  font-size: 16px;
+  padding: 4px;
+  opacity: 0.7;
+}
+
+.error-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  color: var(--danger);
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.error-box::before {
+  content: "⚠";
+  flex-shrink: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.05s;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.btn-block {
+  width: 100%;
+  margin-top: 22px;
+}
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--primary-700);
+}
+.btn-outline {
+  border: 1.5px solid var(--primary);
+  color: var(--primary);
+  background: #fff;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 14px;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.divider span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ============================================================
+   App header (home, admin, history, etc.)
+   ============================================================ */
+.app-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 18px 16px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.app-header.solid {
+  padding-bottom: 16px;
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 3px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-align: center;
+  flex: 1;
+}
+.page-title.small {
+  font-size: 15px;
+  text-align: left;
+}
+
+.page-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 2px;
+}
+
+.admin-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shield-ic {
+  font-size: 22px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  background: rgba(255, 255, 255, 0.18);
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.icon-btn.dark {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--text);
+}
+
+.logout-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Filter row (Find Jobs / Find Workers) */
+.filter-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.filter-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.filter-btn.active {
+  background: #fff;
+  color: var(--primary);
+}
+
+/* ============================================================
+   Search section
+   ============================================================ */
+.search-section {
+  padding: 12px 16px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--input);
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #fff;
+}
+.search-box .ic {
+  color: var(--muted);
+}
+.search-box input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 14px;
+  padding: 4px 0;
+}
+.clear-btn {
+  color: var(--muted);
+  padding: 4px;
+  font-size: 14px;
+}
+
+/* ============================================================
+   Posts list & post cards
+   ============================================================ */
+.posts-list {
+  flex: 1;
+  padding: 12px 16px 100px;
+  overflow-y: auto;
+}
+
+.loading-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px;
+  gap: 6px;
+}
+
+.empty-block {
+  text-align: center;
+  padding: 80px 30px;
+  color: var(--muted);
+}
+.empty-block .big {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+.empty-block .title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 4px 0;
+}
+
+.post-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.post-tags {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.tag.worker {
+  background: rgba(30, 64, 175, 0.12);
+  color: var(--primary);
+}
+.tag.employer {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent);
+}
+
+.post-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 14px;
+}
+.post-row .ic {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.post-row.bold {
+  font-weight: 700;
+  font-size: 15px;
+}
+.post-row .salary {
+  color: var(--success);
+  font-weight: 600;
+}
+.post-row .address {
+  flex: 1;
+  word-break: break-word;
+}
+
+.post-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.post-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.action-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.action-btn.call {
+  background: var(--success);
+  color: #fff;
+}
+.action-btn.delete {
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+}
+.action-btn.edit {
+  background: var(--secondary);
+  color: var(--primary);
+}
+
+/* Inline confirm bar */
+.confirm-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  padding: 8px;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+.confirm-bar .text {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.confirm-bar button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.confirm-bar .yes {
+  background: var(--danger);
+  color: #fff;
+}
+.confirm-bar .no {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+}
+
+/* Bottom bar */
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 10px 20px calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to top, rgba(248, 250, 252, 1), rgba(248, 250, 252, 0));
+  pointer-events: none;
+}
+.bottom-bar > * {
+  pointer-events: auto;
+}
+.bottom-hint {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 300;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(30, 64, 175, 0.4);
+}
+.fab:hover {
+  background: var(--primary-700);
+}
+
+/* ============================================================
+   Stats row (admin)
+   ============================================================ */
+.analytics-group {
+  padding: 14px 16px 0;
+}
+.analytics-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+  padding-left: 2px;
+}
+.stats-row {
+  display: flex;
+  gap: 10px;
+}
+.stat-card {
+  flex: 1;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stat-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+.stat-ic.blue {
+  background: rgba(30, 64, 175, 0.15);
+}
+.stat-ic.amber {
+  background: rgba(245, 158, 11, 0.15);
+}
+.stat-ic.teal {
+  background: rgba(13, 148, 136, 0.13);
+}
+.stat-ic.orange {
+  background: rgba(234, 88, 12, 0.13);
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 800;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* ============================================================
+   Admin users table
+   ============================================================ */
+.table-header-row {
+  padding: 18px 16px 8px;
+}
+.section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.table-head {
+  display: flex;
+  align-items: center;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 0 16px 6px;
+  gap: 6px;
+}
+.th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--primary);
+}
+.th-name {
+  flex: 2.2;
+}
+.th-email {
+  flex: 2;
+}
+.th-posts {
+  width: 50px;
+  text-align: center;
+}
+.th-action {
+  width: 80px;
+  text-align: center;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px;
+  margin: 0 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.user-row:hover {
+  background: rgba(30, 64, 175, 0.04);
+}
+.user-name-col {
+  flex: 2.2;
+  min-width: 0;
+}
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-handle {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.user-email {
+  flex: 2;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.user-posts-col {
+  width: 50px;
+  text-align: center;
+}
+.user-posts-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--primary);
+}
+.user-action-btn {
+  width: 80px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.user-action-btn.block {
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+}
+.user-action-btn.unblock {
+  background: rgba(30, 64, 175, 0.12);
+  color: var(--primary);
+}
+
+.blocked-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   Admin user detail
+   ============================================================ */
+.profile-card {
+  margin: 16px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  gap: 14px;
+}
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: rgba(30, 64, 175, 0.15);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.profile-info {
+  flex: 1;
+  min-width: 0;
+}
+.profile-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+.profile-handle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.profile-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.profile-meta .ic {
+  color: var(--muted);
+}
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+.status-badge.blocked {
+  background: rgba(220, 38, 38, 0.15);
+  color: var(--danger);
+}
+.status-badge.active {
+  background: rgba(22, 163, 74, 0.15);
+  color: var(--success);
+}
+
+.block-big-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 16px;
+  padding: 13px;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.block-big-btn.block {
+  background: var(--danger);
+}
+.block-big-btn.unblock {
+  background: var(--primary);
+}
+
+.posts-header {
+  padding: 20px 16px 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ============================================================
+   Add post modal
+   ============================================================ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn 0.18s ease;
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+.modal-sheet {
+  background: var(--bg);
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.25s ease;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+.modal-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin: 12px auto 8px;
+}
+.modal-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 20px 12px;
+}
+.modal-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.modal-body {
+  padding: 0 20px 24px;
+  overflow-y: auto;
+}
+
+.type-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.type-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--secondary);
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+.type-btn.active[data-type="job_seeker"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.type-btn.active[data-type="employer"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.select-input {
+  width: 100%;
+  border: 1.5px solid var(--input);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  font-size: 15px;
+  color: var(--text);
+  outline: 0;
+  margin-bottom: 4px;
+}
+.select-input:focus {
+  border-color: var(--primary);
+}
+.select-input.multiline {
+  min-height: 90px;
+  resize: vertical;
+  padding-top: 12px;
+}
+
+.locked-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--secondary);
+  border: 1.5px solid var(--input);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* ============================================================
+   Menu (top-right popup)
+   ============================================================ */
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 90px 16px 0;
+}
+
+.menu-pop {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 220px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+.menu-header {
+  padding: 10px 14px;
+}
+.menu-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+.menu-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.menu-divider {
+  height: 1px;
+  background: var(--border);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  width: 100%;
+  text-align: left;
+}
+.menu-item:hover {
+  background: rgba(30, 64, 175, 0.05);
+}
+.menu-item.danger {
+  color: var(--danger);
+}
+
+/* ============================================================
+   Success bar (top of home) + Done badge + Done action button
+   ============================================================ */
+.success-bar {
+  background: #16a34a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 9px 12px;
+  letter-spacing: 0.2px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.success-bar strong {
+  color: #fef3c7;
+  font-weight: 800;
+  margin: 0 2px;
+}
+
+.done-badge {
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #fff;
+  text-align: center;
+  padding: 14px 12px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.6px;
+  margin-top: 12px;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.28);
+}
+
+.action-btn.done {
+  background: #f59e0b;
+  color: #fff;
+}
+.action-btn.done:hover {
+  background: #d97706;
+}
+
+.stat-ic.green {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+/* ============================================================
+   Salary input with fixed "Rs." prefix
+   ============================================================ */
+.input-with-prefix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-prefix {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 700;
+  color: var(--primary);
+  pointer-events: none;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+}
+.select-input.has-prefix {
+  padding-left: 48px;
+}
+
+/* Admin Reset Status button */
+.action-btn.reset {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.action-btn.reset:hover {
+  background: #fde68a;
+}
+
+/* Edit post button in admin */
+.action-btn.edit-post-btn {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+.action-btn.edit-post-btn:hover {
+  background: #dbeafe;
+}
+
+/* Danger variant for user-action buttons and block-big-btn */
+.user-action-btn.danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.user-action-btn.danger:hover {
+  background: #fecaca;
+}
+.block-big-btn.danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #fca5a5;
+  font-weight: 700;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 15px;
+  margin-bottom: 16px;
+  display: block;
+}
+.block-big-btn.danger:hover {
+  background: #fecaca;
+}
+
+/* ============================================================
+   Email Signup — Success notice
+   ============================================================ */
+.signup-success-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 14px;
+  padding: 24px 20px;
+  text-align: center;
+}
+.signup-success-ic {
+  font-size: 40px;
+  margin-bottom: 12px;
+}
+.signup-success-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #166534;
+  margin-bottom: 10px;
+}
+.signup-success-msg {
+  font-size: 14px;
+  color: #15803d;
+  line-height: 1.6;
+}
+
+/* ============================================================
+   Forgot Password link + modal
+   ============================================================ */
+.forgot-link-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 6px 0 2px;
+}
+.forgot-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.forgot-link:hover {
+  color: var(--primary-dark, #1e3a8a);
+}
+.forgot-modal-card {
+  padding: 24px 20px 20px;
+}
+.forgot-modal-header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+.forgot-modal-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+.forgot-modal-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.forgot-modal-sub {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.forgot-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.forgot-modal-actions .btn {
+  flex: 1;
+}
+
+/* ============================================================
+   Report button on post cards
+   ============================================================ */
+.action-btn.report {
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  border: 1px solid rgba(220, 38, 38, 0.18);
+}
+.action-btn.report:hover {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+/* ============================================================
+   Admin — Reported Posts section
+   ============================================================ */
+.reported-label {
+  color: #b91c1c !important;
+}
+.reported-empty {
+  padding: 10px 2px;
+}
+.reported-post-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  border-left: 3px solid #dc2626;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.reported-post-info {
+  flex: 1;
+  min-width: 0;
+}
+.reported-post-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reported-post-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.report-count-tag {
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Report confirm modal
+   ============================================================ */
+.report-confirm-card {
+  text-align: center;
+  padding: 28px 22px 22px;
+}
+.report-confirm-icon {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+.report-confirm-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #b91c1c;
+}
+.report-confirm-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+.report-confirm-actions {
+  display: flex;
+  gap: 10px;
+}
+.report-confirm-actions .btn {
+  flex: 1;
+}
+.report-submit-btn {
+  background: #dc2626;
+  color: #fff;
+  font-weight: 600;
+}
+.report-submit-btn:hover {
+  background: #b91c1c;
+}
+
+/* ============================================================
+   Toast notification
+   ============================================================ */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: #1e293b;
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 24px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.22);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.success { background: #15803d; }
+.toast.info    { background: #1d4ed8; }
+
+/* ============================================================
+   Verification status badge (admin user list)
+   ============================================================ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  margin-top: 4px;
+}
+.status-badge.verified {
+  background: rgba(22, 163, 74, 0.13);
+  color: #15803d;
+}
+.status-badge.pending {
+  background: rgba(234, 88, 12, 0.12);
+  color: #c2410c;
+}

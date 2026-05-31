@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1E40AF" />
+    <title>MADADGAR — Pakistan's Trusted Service Hub</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ===================== LOGIN SCREEN ===================== -->
+    <section class="screen" id="screen-login">
+      <div class="auth-wrap">
+        <div class="logo-box">MADADGAR</div>
+        <p class="brand-tag">Pakistan's Trusted Service Hub</p>
+        <h1 class="auth-title">Khush Aamdeed</h1>
+        <p class="auth-sub">Username aur password se login karein</p>
+
+        <form id="form-login" class="form" autocomplete="off">
+          <label class="field-label">USERNAME</label>
+          <div class="input-box">
+            <span class="ic">👤</span>
+            <input
+              type="text"
+              id="login-username"
+              placeholder="Apna username..."
+              autocapitalize="none"
+              autocomplete="off"
+            />
+          </div>
+
+          <label class="field-label">PASSWORD</label>
+          <div class="input-box">
+            <span class="ic">🔒</span>
+            <input
+              type="password"
+              id="login-password"
+              placeholder="Password..."
+              autocomplete="off"
+            />
+            <button
+              type="button"
+              class="eye-btn"
+              data-target="login-password"
+              aria-label="Show password"
+            >
+              👁
+            </button>
+          </div>
+
+          <div class="forgot-link-row">
+            <button type="button" class="forgot-link" id="forgot-password-btn">Bhool Gaye Password?</button>
+          </div>
+
+          <div class="error-box" id="login-error" hidden></div>
+
+          <button type="submit" class="btn btn-primary btn-block">
+            <span id="login-btn-text">LOGIN</span>
+          </button>
+
+          <div class="divider">
+            <span>ya</span>
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-outline btn-block"
+            id="go-signup"
+          >
+            + Naya Account Banayein (Sign Up)
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ===================== SIGNUP SCREEN ===================== -->
+    <section class="screen" id="screen-signup">
+      <div class="auth-wrap">
+        <button class="back-link" id="back-from-signup">← Wapas</button>
+        <div class="logo-box small">MADADGAR</div>
+        <p class="brand-tag">Naya Account Banayein</p>
+
+        <!-- Signup form -->
+        <div id="signup-form" class="form">
+          <label class="field-label">FULL NAME</label>
+          <div class="input-box">
+            <span class="ic">👤</span>
+            <input type="text" id="signup-fullname" placeholder="Masalan: Ahmed Khan" autocomplete="name" />
+          </div>
+
+          <label class="field-label">USERNAME</label>
+          <div class="input-box">
+            <span class="ic">@</span>
+            <input
+              type="text"
+              id="signup-username"
+              placeholder="ahmed_k (sirf english letters)"
+              autocapitalize="none"
+              autocomplete="off"
+            />
+          </div>
+
+          <label class="field-label">EMAIL</label>
+          <div class="input-box">
+            <span class="ic">✉️</span>
+            <input
+              type="email"
+              id="signup-email"
+              placeholder="aapki@email.com"
+              autocomplete="email"
+              inputmode="email"
+            />
+          </div>
+
+          <label class="field-label">PASSWORD</label>
+          <div class="input-box">
+            <span class="ic">🔒</span>
+            <input
+              type="password"
+              id="signup-password"
+              placeholder="Apna password chunein (6+ characters)..."
+              autocomplete="new-password"
+            />
+            <button type="button" class="eye-btn" data-target="signup-password" aria-label="Show password">👁</button>
+          </div>
+
+          <div class="error-box" id="signup-error" hidden></div>
+
+          <button type="button" id="signup-btn" class="btn btn-primary btn-block">
+            <span id="signup-btn-text">SIGN UP</span>
+          </button>
+
+          <p class="muted center small spaced">
+            Pehle se account hai?
+            <a href="#" id="go-login" class="link">Login karein</a>
+          </p>
+        </div>
+
+        <!-- Success notice (shown after signup) -->
+        <div id="signup-success-notice" class="form" hidden>
+          <div class="signup-success-box">
+            <div class="signup-success-ic">✉️</div>
+            <div class="signup-success-title">Registration Kamyab!</div>
+            <div class="signup-success-msg">
+              Aap ki email pe ek <strong>verification link</strong> bheja gaya hai.
+              Login karne se pehle apna inbox check karein aur email verify karein.
+            </div>
+          </div>
+          <button type="button" id="go-to-login-btn" class="btn btn-primary btn-block" style="margin-top:20px">
+            LOGIN PE JAYEIN →
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== HOME SCREEN ===================== -->
+    <section class="screen" id="screen-home">
+      <div class="success-bar">
+        🤲 Alhamdulillah! Ab tak Pakistan bhar mein
+        <strong id="success-count">0</strong> logon ki madad ho chuki hai.
+      </div>
+      <header class="app-header">
+        <div class="header-top">
+          <h1 class="brand">MADADGAR</h1>
+          <div class="header-actions">
+            <button
+              class="icon-btn"
+              id="open-history"
+              title="Meri Posts"
+              aria-label="My Posts"
+            >
+              👤
+            </button>
+            <button
+              class="icon-btn"
+              id="open-menu"
+              title="Menu"
+              aria-label="Menu"
+            >
+              ⋮
+            </button>
+          </div>
+        </div>
+        <p class="brand-tag light">Pakistan's Trusted Service Hub</p>
+
+        <div class="filter-row">
+          <button class="filter-btn active" data-filter="find_jobs">
+            💼 Find Jobs
+          </button>
+          <button class="filter-btn" data-filter="find_workers">
+            👥 Find Workers
+          </button>
+        </div>
+      </header>
+
+      <div class="search-section">
+        <div class="search-box" id="category-search-wrap">
+          <span class="ic">🔧</span>
+          <input
+            type="text"
+            id="search-category"
+            placeholder="Category (Driver, Electrician...)"
+          />
+          <button class="clear-btn" data-clear="search-category" hidden>
+            ✕
+          </button>
+        </div>
+        <div class="search-box">
+          <span class="ic">📍</span>
+          <input
+            type="text"
+            id="search-address"
+            placeholder="Address ya area search karein..."
+          />
+          <button class="clear-btn" data-clear="search-address" hidden>
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <div class="posts-list" id="posts-list">
+        <div class="loading-block">
+          <div class="spinner"></div>
+          <p class="muted small">Madadgar App loading...</p>
+        </div>
+      </div>
+
+      <div class="bottom-bar">
+        <span class="bottom-hint" id="bottom-hint">Hi!</span>
+        <button class="fab" id="open-add-post" aria-label="Add new post">
+          +
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================== HISTORY (MY POSTS) SCREEN ===================== -->
+    <section class="screen" id="screen-history">
+      <header class="app-header solid">
+        <div class="header-top">
+          <button
+            class="icon-btn"
+            id="back-from-history"
+            aria-label="Back"
+          >
+            ←
+          </button>
+          <h1 class="page-title">MERI POSTS</h1>
+          <div style="width: 36px"></div>
+        </div>
+      </header>
+      <div class="posts-list" id="my-posts-list"></div>
+    </section>
+
+    <!-- ===================== ADMIN PANEL ===================== -->
+    <section class="screen" id="screen-admin">
+      <header class="app-header solid">
+        <div class="header-top">
+          <div class="admin-brand">
+            <span class="shield-ic">🛡️</span>
+            <div>
+              <div class="page-title small">SUPER ADMIN</div>
+              <div class="page-subtitle">Madadgar Control Panel</div>
+            </div>
+          </div>
+          <button class="logout-pill" id="admin-logout">⎋ Logout</button>
+        </div>
+      </header>
+
+      <!-- ── Verification Analytics (top) ── -->
+      <div class="analytics-group">
+        <div class="analytics-group-label">Email Verification</div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-ic blue">👥</div>
+            <div>
+              <div class="stat-value" id="stat-signups">0</div>
+              <div class="stat-label">Total Sign-ups</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-ic teal">✅</div>
+            <div>
+              <div class="stat-value" id="stat-verified">0</div>
+              <div class="stat-label">Verified Users</div>
+            </div>
+          </div>
+          <div class="stat-card stat-card-warn">
+            <div class="stat-ic orange">⏳</div>
+            <div>
+              <div class="stat-value" id="stat-pending">0</div>
+              <div class="stat-label">Pending</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── General Stats ── -->
+      <div class="analytics-group">
+        <div class="analytics-group-label">Activity</div>
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-ic blue">🙍</div>
+            <div>
+              <div class="stat-value" id="stat-users">0</div>
+              <div class="stat-label">Total Users</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-ic amber">📄</div>
+            <div>
+              <div class="stat-value" id="stat-posts">0</div>
+              <div class="stat-label">Total Posts</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-ic green">✓</div>
+            <div>
+              <div class="stat-value" id="stat-success">0</div>
+              <div class="stat-label">Success Stories</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Reported Posts ── -->
+      <div class="analytics-group">
+        <div class="analytics-group-label reported-label">⚠️ Reported Posts</div>
+        <div id="reported-posts-list">
+          <div class="reported-empty muted small">Koi reported post nahi hai. ✓</div>
+        </div>
+      </div>
+
+      <div class="table-header-row">
+        <h2 class="section-title">Registered Users</h2>
+        <p class="muted small">User pe tap karein details ke liye</p>
+      </div>
+
+      <div class="table-head">
+        <span class="th th-name">NAME</span>
+        <span class="th th-email">EMAIL</span>
+        <span class="th th-posts">POSTS</span>
+        <span class="th th-action">ACTION</span>
+      </div>
+
+      <div id="users-table-body">
+        <div class="loading-block">
+          <div class="spinner"></div>
+          <p class="muted small">Madadgar App loading...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ADMIN USER DETAIL ===================== -->
+    <section class="screen" id="screen-admin-user">
+      <header class="app-header solid">
+        <div class="header-top">
+          <button class="icon-btn" id="back-from-admin-user">←</button>
+          <h1 class="page-title">USER DETAILS</h1>
+          <div style="width: 36px"></div>
+        </div>
+      </header>
+      <div id="admin-user-content"></div>
+    </section>
+
+    <!-- ===================== ADD POST MODAL ===================== -->
+    <div class="modal-backdrop" id="add-post-modal" hidden>
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title-row">
+          <h2 class="modal-title" id="post-modal-title">Naya Post Karein</h2>
+          <button class="icon-btn dark" id="close-add-post">✕</button>
+        </div>
+
+        <form id="form-add-post" class="modal-body">
+          <label class="field-label">Aap kya chahte hain?</label>
+          <div class="type-row">
+            <button
+              type="button"
+              class="type-btn active"
+              data-type="job_seeker"
+            >
+              👤 Mujhe Naukri Chahiye
+            </button>
+            <button type="button" class="type-btn" data-type="employer">
+              💼 Mujhe Worker Chahiye
+            </button>
+          </div>
+
+          <label class="field-label">Category (Kaam Ki Qisam) *</label>
+          <select id="post-category" class="select-input">
+            <option value="">Select karein...</option>
+            <option>Driver</option>
+            <option>Electrician</option>
+            <option>Plumber</option>
+            <option>Carpenter</option>
+            <option>Mason (Raj Mistri)</option>
+            <option>Painter</option>
+            <option>Cook (Bawarchi)</option>
+            <option>Guard</option>
+            <option>Cleaner</option>
+            <option>Helper / Mazdoor</option>
+            <option>Welder</option>
+            <option>AC Mechanic</option>
+            <option>Mobile Repair</option>
+            <option>Tailor (Darzi)</option>
+            <option>Barber (Hajaam)</option>
+            <option>Gardener (Mali)</option>
+            <option>Other</option>
+          </select>
+
+          <input
+            type="text"
+            id="post-custom-category"
+            class="select-input"
+            placeholder="Apni category likhein..."
+            hidden
+          />
+
+          <div id="salary-field" hidden>
+            <label class="field-label">Tankhwah / Salary (Optional)</label>
+            <div class="input-with-prefix">
+              <span class="input-prefix">Rs.</span>
+              <input
+                type="text"
+                id="post-salary"
+                class="select-input has-prefix"
+                placeholder="20,000 / mahana ya 1,000 / roz"
+              />
+            </div>
+          </div>
+
+          <label class="field-label">Mobile Number (aap ka)</label>
+          <div class="input-with-prefix">
+            <span class="input-prefix">📞</span>
+            <input
+              type="tel"
+              id="post-mobile-input"
+              class="select-input has-prefix"
+              placeholder="03001234567"
+              maxlength="15"
+            />
+          </div>
+
+          <label class="field-label">Address / Jagah *</label>
+          <textarea
+            id="post-address"
+            class="select-input multiline"
+            placeholder="Apna address ya mohalla likhein..."
+            rows="3"
+          ></textarea>
+
+          <div class="error-box" id="post-error" hidden></div>
+
+          <button type="submit" class="btn btn-primary btn-block" id="post-submit">
+            POST KAREIN
+          </button>
+          <button type="button" class="btn btn-outline btn-block" id="edit-cancel-btn" hidden style="margin-top:8px">
+            Cancel
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===================== USER MENU ===================== -->
+    <div class="menu-backdrop" id="menu-backdrop" hidden>
+      <div class="menu-pop">
+        <div class="menu-header">
+          <div class="menu-name" id="menu-name">—</div>
+          <div class="menu-sub" id="menu-sub">@—</div>
+        </div>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="menu-history">👤 Meri Posts</button>
+        <div class="menu-divider"></div>
+        <button class="menu-item" id="menu-share">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          App Share Karein
+        </button>
+        <div class="menu-divider"></div>
+        <button class="menu-item danger" id="menu-logout">⎋ Logout</button>
+      </div>
+    </div>
+
+    <!-- ===================== FORGOT PASSWORD MODAL ===================== -->
+    <div class="modal-backdrop" id="forgot-modal" hidden>
+      <div class="modal-card forgot-modal-card">
+        <div class="forgot-modal-header">
+          <div class="forgot-modal-icon">🔑</div>
+          <h3 class="forgot-modal-title">Password Reset</h3>
+          <p class="forgot-modal-sub">Apna registered email daalen. Hum aapko reset link bhejenge.</p>
+        </div>
+        <div class="input-box" style="margin-bottom:6px">
+          <span class="ic">✉️</span>
+          <input
+            type="email"
+            id="forgot-email"
+            placeholder="aapki@email.com"
+            inputmode="email"
+            autocomplete="email"
+          />
+        </div>
+        <div class="error-box" id="forgot-error" hidden></div>
+        <div class="forgot-modal-actions">
+          <button class="btn btn-outline" id="forgot-cancel">Cancel</button>
+          <button class="btn btn-primary" id="forgot-submit">
+            <span id="forgot-btn-text">Reset Link Bhejein</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== REPORT CONFIRM MODAL ===================== -->
+    <div class="modal-backdrop" id="report-modal" hidden>
+      <div class="modal-card report-confirm-card">
+        <div class="report-confirm-icon">⚠️</div>
+        <h3 class="report-confirm-title">Post Report Karein?</h3>
+        <p class="report-confirm-body">Kya yeh post spam ya inappropriate hai? Admin ko alert milega review ke liye.</p>
+        <div class="report-confirm-actions">
+          <button class="btn btn-outline" id="report-cancel">Cancel</button>
+          <button class="btn report-submit-btn" id="report-confirm-btn">Report Post</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== TOAST ===================== -->
+    <div id="toast-container" aria-live="polite"></div>
+
+    <!-- ===================== INITIAL SPLASH ===================== -->
+    <div id="splash" class="splash">
+      <div class="logo-box">MADADGAR</div>
+      <p class="brand-tag">Pakistan's Trusted Service Hub</p>
+      <div class="spinner"></div>
+      <p class="muted small">Madadgar App loading...</p>
+    </div>
+
+    <!-- ===================== HIDDEN ADMIN GATE ===================== -->
+    <div class="modal-backdrop gate-backdrop" id="admin-gate-backdrop" hidden>
+      <div class="gate-card" role="dialog" aria-label="">
+        <form id="admin-gate-form" autocomplete="off">
+          <input
+            type="password"
+            id="admin-gate-input"
+            class="gate-input"
+            placeholder="••••••••"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+          />
+          <div class="gate-row">
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              id="admin-gate-cancel"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary btn-sm">OK</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Firebase compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

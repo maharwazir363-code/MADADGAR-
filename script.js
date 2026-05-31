@@ -795,7 +795,7 @@ function showToast(msg, type = "success", duration = 3000) {
 
 /* -------- Share App -------- */
 function handleShareApp() {
-  const appUrl  = window.location.origin + window.location.pathname;
+  const appUrl  = "https://maharwazir363-code.github.io/MADADGAR-/";
   const shareText =
     "Salam! Agar aap ko kisi bhi kism ki madad chahiye ya aap kisi ki madad karna chahte hain, " +
     "toh abhi 'MADADGAR' app use karein: " + appUrl;

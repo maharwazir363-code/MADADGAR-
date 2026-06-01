@@ -1,0 +1,22 @@
+{
+  "name": "MADADGAR - Pakistan Community Hub",
+  "short_name": "MADADGAR",
+  "description": "Download MADADGAR to find free jobs and help community.",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#4CAF50",
+  "icons": [
+    {
+      "src": "https://placehold.co/192x192/png?text=Madadgar",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://placehold.co/512x512/png?text=Madadgar",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

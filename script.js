@@ -1507,3 +1507,63 @@ if (document.readyState === "loading") {
 } else {
   init();
 }
+let deferredPrompt;
+
+// PWA installation prompt ko catch karna
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  // Jab browser ready ho jaye, toh top patti ko show kar do
+  const topBar = document.getElementById('pwa-top-bar');
+  if (topBar) {
+    topBar.style.display = 'flex';
+  }
+});
+
+function openInstallModal() {
+  const modal = document.getElementById('pwa-install-modal');
+  if (modal) {
+    modal.style.display = 'block';
+  }
+}
+
+function closeTopBar() {
+  const topBar = document.getElementById('pwa-top-bar');
+  if (topBar) {
+    topBar.style.display = 'none';
+  }
+}
+
+function closeInstallModal() {
+  const modal = document.getElementById('pwa-install-modal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+// Install Button par click hone ka action (Video wala setup)
+document.addEventListener('DOMContentLoaded', () => {
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      const btnText = document.getElementById('btn-text');
+      
+      // Video wala loading effect dikhane ke liye text change kiya
+      if (btnText) btnText.innerText = "Downloading...";
+      
+      setTimeout(async () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log(`User choice: ${outcome}`);
+          deferredPrompt = null;
+        } else {
+          // Agar direct browser install support na kare, toh yahan direct link kaam karega
+          window.location.href = "https://maharwazir363-code.github.io/MADADGAR-/app.apk";
+        }
+        if (btnText) btnText.innerText = "Install App";
+        closeInstallModal();
+      }, 1500); // 1.5 Second ka delay/loading bar
+    });
+  }
+});

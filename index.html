@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <link rel="manifest" href="manifest.json">
     <meta charset="utf-8" />
     <meta
       name="viewport"
@@ -11,6 +12,26 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- Top Download Bar (Chhoti Patti) -->
+<div id="pwa-top-bar" style="display: none; background: #ff4d4d; color: white; padding: 12px; position: fixed; top: 0; left: 0; width: 100%; z-index: 9999; display: flex; justify-content: space-between; align-items: center; font-family: sans-serif; box-sizing: border-box; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+  <span style="font-size: 14px; font-weight: bold;">📥 Download MADADGAR App to enjoy more benefits!</span>
+  <div style="display: flex; align-items: center;">
+    <button onclick="openInstallModal()" style="background: white; color: #ff4d4d; border: none; padding: 6px 14px; border-radius: 6px; font-weight: bold; font-size: 13px; margin-right: 12px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">Download</button>
+    <button onclick="closeTopBar()" style="background: transparent; color: white; border: none; font-size: 18px; cursor: pointer; font-weight: bold; padding: 0 5px;">X</button>
+  </div>
+</div>
+
+<!-- Bottom Custom Install Modal (Video Style Bada Box) -->
+<div id="pwa-install-modal" style="display: none; position: fixed; bottom: 0; left: 0; width: 100%; background: #1a1a1a; color: white; border-top-left-radius: 20px; border-top-right-radius: 20px; padding: 25px 20px; box-sizing: border-box; z-index: 10000; font-family: sans-serif; text-align: center; box-shadow: 0 -5px 25px rgba(0,0,0,0.5); transition: all 0.3s ease;">
+  <span onclick="closeInstallModal()" style="position: absolute; right: 20px; top: 15px; font-size: 22px; cursor: pointer; color: #888; font-weight: bold;">X</span>
+  <div style="background: #4CAF50; width: 70px; height: 70px; margin: 0 auto 12px auto; border-radius: 15px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; color: white; box-shadow: 0 4px 10px rgba(76,175,80,0.3);">M</div>
+  <h3 style="margin: 5px 0; font-size: 20px; letter-spacing: 0.5px;">MADADGAR.HUB</h3>
+  <p style="color: #aaa; font-size: 14px; margin: 5px 0 25px 0;">Download to enjoy more benefits</p>
+  
+  <button id="pwa-install-btn" style="background: #4CAF50; color: white; border: none; width: 100%; padding: 14px; border-radius: 10px; font-size: 16px; font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 15px rgba(76,175,80,0.4);">
+    🤖 <span id="btn-text" style="margin-left: 10px;">Install App</span>
+  </button>
+</div>
     <!-- ===================== LOGIN SCREEN ===================== -->
     <section class="screen" id="screen-login">
       <div class="auth-wrap">

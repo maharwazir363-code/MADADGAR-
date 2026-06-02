@@ -1567,3 +1567,156 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+// ====== MADADGAR USER PROFILE SYSTEM ======
+
+// Gallery se Image select hone par Firebase Storage par upload karna
+const profileFilePicker = document.getElementById('profile-file-picker');
+if (profileFilePicker) {
+    profileFilePicker.addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            let file = e.target.files[0];
+            
+            // Check current user log-in ID (Default "test_user" agar dynamic na ho)
+            let currentUserID = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.uid : "test_user";
+            
+            // Image ko thoda dhundla (blur) kar dein loading dikhane ke liye
+            const myProfilePic = document.getElementById('my-profile-pic');
+            if(myProfilePic) myProfilePic.style.opacity = "0.5";
+            
+            // Firebase Storage reference path
+            let storageRef = firebase.storage().ref('profile_pics/' + currentUserID + '.jpg');
+            
+            // File upload process
+            storageRef.put(file).then((snapshot) => {
+                snapshot.ref.getDownloadURL().then((downloadURL) => {
+                    if(myProfilePic) {
+                        myProfilePic.src = downloadURL;
+                        myProfilePic.style.opacity = "1";
+                    }
+                    
+                    // Realtime Database mein link save karna
+                    firebase.database().ref('Users/' + currentUserID).update({
+                        profile_pic: downloadURL
+                    });
+                    
+                    alert("Profile picture kamyabi se upload ho gayi! 🔥");
+                });
+            }).catch((error) => {
+                console.error(error);
+                if(myProfilePic) myProfilePic.style.opacity = "1";
+                alert("Upload karne mein koi masla aaya.");
+            });
+        }
+    });
+}
+
+// Real Name modal mein dikhane ka function
+function updateProfileModalName(name) {
+    const myProfileName = document.getElementById('my-profile-name');
+    if(myProfileName && name) {
+        myProfileName.innerText = name;
+    }
+}
+// Firebase Auth State change hone par ya login hone par naam popup mein daalne ke liye
+firebase.auth().onAuthStateChanged((user) => {
+    if (user) {
+        // User login hai, us ka naam database ya auth se nikalna
+        let userName = user.displayName || "MADADGAR User";
+        
+        // Agar aap ke database mein name alag node par hai toh hum wahan se fetch karenge
+        firebase.database().ref('Users/' + user.uid).once('value').then((snapshot) => {
+            if (snapshot.exists() && snapshot.val().name) {
+                userName = snapshot.val().name;
+            }
+            // Screen par naam aur pic update kar do
+            const nameField = document.getElementById('my-profile-name');
+            if (nameField) nameField.innerText = userName;
+            
+            if (snapshot.exists() && snapshot.val().profile_pic) {
+                const picField = document.getElementById('my-profile-pic');
+                if (picField) picField.src = snapshot.val().profile_pic;
+            }
+        });
+    }
+});
+// ====== MADADGAR DIRECT MESSAGING SYSTEM ======
+
+let currentChatRoomID = "";
+
+// Chat Window Kholne aur purane messages load karne ka function
+function openChatWithUser(receiverID, receiverName, receiverPic) {
+    let currentUserID = firebase.auth().currentUser ? firebase.auth().currentUser.uid : "test_user";
+    
+    // Agar user khud ko hi message bhejne ki koshish kare
+    if (currentUserID === receiverID) {
+        alert("Aap apne aap ko message nahi bhej sakte!");
+        return;
+    }
+
+    // Ek unique chat room ID banana (Humesha alphabetically sort kar ke taake dono side se same room khule)
+    currentChatRoomID = currentUserID < receiverID ? currentUserID + "_" + receiverID : receiverID + "_" + currentUserID;
+    
+    // Header mein worker/client ka naam aur pic set karna
+    document.getElementById('chat-user-name').innerText = receiverName || "MADADGAR User";
+    if (receiverPic) {
+        document.getElementById('chat-user-pic').src = receiverPic;
+    } else {
+        document.getElementById('chat-user-pic').src = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+    }
+    
+    // Chat modal ko screen par dikhana
+    document.getElementById('chat-modal').style.display = 'flex';
+    
+    // Firebase database se is room ke messages real-time load karna
+    firebase.database().ref('Chats/' + currentChatRoomID + '/messages').on('value', (snapshot) => {
+        const messagesArea = document.getElementById('chat-messages-area');
+        messagesArea.innerHTML = ""; // Purani screen saaf karein
+        
+        if (snapshot.exists()) {
+            snapshot.forEach((childSnapshot) => {
+                let msgData = childSnapshot.val();
+                
+                // Message ka bubble card banana
+                let msgBubble = document.createElement('div');
+                
+                // Styling base on sender (Mera message right par, samne wale ka left par)
+                if (msgData.senderID === currentUserID) {
+                    msgBubble.style = "align-self: flex-end; background-color: #0046c7; color: white; padding: 10px 15px; border-radius: 15px 15px 0px 15px; max-width: 75%; word-wrap: break-word; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
+                } else {
+                    msgBubble.style = "align-self: flex-start; background-color: white; color: #333; padding: 10px 15px; border-radius: 15px 15px 15px 0px; max-width: 75%; word-wrap: break-word; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
+                }
+                
+                msgBubble.innerText = msgData.text;
+                messagesArea.appendChild(msgBubble);
+            });
+            
+            // Chat ko automatic scroll kar ke bilkul niche le jana
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        } else {
+            messagesArea.innerHTML = "<p style='text-align:center; color:#999; font-size:13px; margin-top:20px;'>Abhi tak koi message nahi hai. Chat shuru karein!</p>";
+        }
+    });
+}
+
+// Message Send karne ka function
+function sendMessage() {
+    let currentUserID = firebase.auth().currentUser ? firebase.auth().currentUser.uid : "test_user";
+    let inputField = document.getElementById('chat-input-text');
+    let messageText = inputField.value.trim();
+    
+    if (messageText === "" || currentChatRoomID === "") return;
+    
+    let messageData = {
+        senderID: currentUserID,
+        text: messageText,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    };
+    
+    // Firebase database mein message push karna
+    firebase.database().ref('Chats/' + currentChatRoomID + '/messages').push(messageData).then(() => {
+        inputField.value = ""; // Input clear karein
+    });
+}
+   
+
+

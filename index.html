@@ -192,6 +192,7 @@
               id="open-history"
               title="Meri Posts"
               aria-label="My Posts"
+              onclick="document.getElementById('profile-modal').style.display = 'flex'"
             >
               👤
             </button>
@@ -588,5 +589,42 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
     <script src="script.js"></script>
+    <!-- VIP Profile Modal (Popup Window) -->
+<div id="profile-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; font-family: Arial, sans-serif;">
+    
+    <div style="background-color: white; width: 85%; max-width: 400px; padding: 25px; border-radius: 15px; text-align: center; position: relative; box-shadow: 0px 5px 15px rgba(0,0,0,0.3);">
+        
+        <!-- Close Button (Cross Icon) -->
+        <span onclick="document.getElementById('profile-modal').style.display = 'none'" style="position: absolute; top: 15px; right: 20px; font-size: 24px; font-weight: bold; cursor: pointer; color: #666;">&times;</span>
+        
+        <h3 style="margin-top: 0; color: #0046c7; font-size: 22px; margin-bottom: 20px;">Apna Account</h3>
+        
+        <!-- Profile Picture Container -->
+        <div style="position: relative; width: 120px; height: 120px; margin: 0 auto 15px auto;">
+            <img id="my-profile-pic" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #0046c7;">
+            
+            <!-- Hidden Input File Picker -->
+            <input type="file" id="profile-file-picker" accept="image/*" style="display: none;">
+            
+            <!-- Edit Icon on Picture -->
+            <div onclick="document.getElementById('profile-file-picker').click()" style="position: absolute; bottom: 0; right: 5px; background-color: #0046c7; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+                📷
+            </div>
+        </div>
+
+        <!-- User Info -->
+        <h4 id="my-profile-name" style="margin: 10px 0 5px 0; font-size: 18px; color: #333;">Loading Name...</h4>
+        <p id="my-profile-status" style="margin: 0 0 20px 0; font-size: 14px; color: #777;">MADADGAR Member</p>
+        
+        <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 15px;">
+        
+        <!-- User's Own Posts Section -->
+        <h5 style="text-align: left; margin: 0 0 10px 0; color: #0046c7; font-size: 16px;">Meri Posts</h5>
+        <div id="my-own-posts" style="max-height: 150px; overflow-y: auto; text-align: left; font-size: 13px; color: #555; padding: 5px; background: #f9f9f9; border-radius: 8px;">
+            Abhi tak koi post nahi ki.
+        </div>
+
+    </div>
+</div>
   </body>
 </html>

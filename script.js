@@ -621,56 +621,58 @@ function postCardHTML(post, opts = {}) {
   inner += `<div class="post-meta">${timeAgo(post.createdAt)} • ${
     post.viewCount || 0
   } views</div>`;
+   // Action buttons
+const isOwner = state.user && post.username === state.user.username;
 
-  // Action buttons
-  const isOwner =
-    state.user && post.username === state.user.username;
-
-  if (opts.adminMode) {
+if (opts.adminMode) {
     const resetBtn = post.done
-      ? `<button class="action-btn reset" data-act="reset-done" data-id="${post.id}">↺ Reset</button>`
+      ? `<button class="action-btn reset" data-act="reset-done" data-id="${post.id}">Reset</button>`
       : "";
     inner += `
       <div class="post-actions">
         ${resetBtn}
-        <button class="action-btn edit-post-btn" data-act="edit-post" data-id="${post.id}">✏️ Edit</button>
-        <button class="action-btn delete" data-act="delete-post" data-id="${post.id}">🗑 Delete</button>
+        <button class="action-btn edit-post-btn" data-act="edit-post" data-id="${post.id}">Edit</button>
+        <button class="action-btn delete" data-act="delete-post" data-id="${post.id}">Delete</button>
       </div>`;
-  } else if (isOwner) {
+} else if (isOwner) {
     // Owner sees Mark-as-Done (only if not already done), Call, Delete
     const doneBtn = post.done
       ? ""
       : `<button class="action-btn done" data-act="mark-done" data-id="${post.id}">✓ Mark as Done</button>`;
     const deleteBtn = opts.myMode
-      ? `<button class="action-btn delete" data-act="delete-mine" data-id="${post.id}">🗑 Delete</button>`
+      ? `<button class="action-btn delete" data-act="delete-mine" data-id="${post.id}">🗑️ Delete</button>`
       : "";
     inner += `
       <div class="post-actions">
         ${doneBtn}
-        <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(
-          post.mobileNumber
-        )}">📞 Call</button>
+        <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}">📞 Call</button>
         ${deleteBtn}
       </div>`;
-  } else if (!post.done) {
-    // Non-owner viewers — Call + Report buttons
+} else if (!post.done) {
+    // Non-owner viewers – Message + Call + Report buttons
     const alreadyReported = (() => {
-      try {
-        const key = "madadgar_reported_v1";
-        return JSON.parse(localStorage.getItem(key) || "[]").includes(post.id);
-      } catch { return false; }
+        try {
+            const key = "madadgar_reported_v1";
+            return JSON.parse(localStorage.getItem(key) || "[]").includes(post.id);
+        } catch { return false; }
     })();
+
     const reportBtn = alreadyReported
-      ? `<button class="action-btn report" disabled style="opacity:.5;cursor:default">✓ Reported</button>`
+      ? `<button class="action-btn report" disabled style="opacity:.5; cursor:default">✓ Reported</button>`
       : `<button class="action-btn report" data-act="report-post" data-id="${post.id}">⚠️ Report</button>`;
+
     inner += `
-      <div class="post-actions">
-        <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(
-          post.mobileNumber
-        )}">📞 Call ${escapeHtml(post.mobileNumber)}</button>
-        ${reportBtn}
+      <div class="post-actions" style="display: flex; flex-direction: column; gap: 5px;">
+        <!-- Blue Color VIP Chat Button -->
+        <button type="button" class="action-btn" onclick="openChatWithUser('${post.userId || 'test_user'}', '${escapeHtml(post.name || 'MADADGAR User')}', '${post.profilePic || ''}')" style="background-color: #1E40AF; color: white; border: none; padding: 8px; border-radius: 5px; font-weight: bold; cursor: pointer; width: 100%;">💬 Message Karein</button>
+        
+        <div style="display: flex; gap: 5px; width: 100%;">
+          <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}" style="flex: 1;">📞 Call</button>
+          <div style="flex: 1;">${reportBtn}</div>
+        </div>
       </div>`;
-  }
+}
+
 
   return `<div class="post-card" data-post="${post.id}">${inner}</div>`;
 }

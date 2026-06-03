@@ -1818,11 +1818,14 @@ function loadChatHistory() {
 
 // REAL-TIME NOTIFICATION BADGE LISTENERS (POINT 4)
 function listenForChatNotifications() {
-    let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
-    
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "";
+    if (!currentUserID && firebase.auth().currentUser) {
+        currentUserID = firebase.auth().currentUser.uid;
+    }
+
     firebase.database().ref('chats').on('value', (snapshot) => {
         let totalUnread = 0;
-        
+
         if (snapshot.exists()) {
             snapshot.forEach((room) => {
                 let unreadData = room.child('unread').val();
@@ -1831,8 +1834,9 @@ function listenForChatNotifications() {
                 }
             });
         }
-        
-        const badge = document.getElementById('chat-nav-badge');
+
+        // ID update kar di hai taake aap ke naye icon par unread message count show ho sake
+        const badge = document.getElementById('global-inbox-badge');
         if (badge) {
             if (totalUnread > 0) {
                 badge.innerText = totalUnread;
@@ -1842,7 +1846,8 @@ function listenForChatNotifications() {
             }
         }
     });
-           }
+}
+
 // Security helper function to escape HTML characters
 function escapeHtml(text) {
     if (!text) return "";
@@ -1853,5 +1858,24 @@ function escapeHtml(text) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+function openInboxScreen() {
+    // Agar aap ke code mein showScreen function pehle se hai:
+    if (typeof showScreen === "function") {
+        showScreen('chat-history-screen'); // Ya jo bhi aapke chat layout ki ID hai
+    } else {
+        // Agar showScreen nahi hai, to direct style se display change karein
+        document.getElementById('screen-home').style.display = 'none';
+        
+        // Ensure karein ke aapka chat history container visible ho jaye
+        const historyScreen = document.getElementById('chat-history-screen') || document.getElementById('chat-screen');
+        if (historyScreen) historyScreen.style.display = 'block';
+    }
+    
+    // Yahan hum inbox load karne ka function pichle code wala call karenge jab aap kahenge
+    if (typeof loadChatHistory === "function") {
+        loadChatHistory();
+    }
+}
+
    
            

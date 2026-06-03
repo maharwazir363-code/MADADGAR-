@@ -650,6 +650,27 @@
             </div>
         </div>
     </div>
+    <!-- ==================== INBOX / MESSAGES SCREEN ==================== -->
+<section class="screen" id="chat-history-screen" style="display: none; padding: 15px; background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    
+    <!-- Header (WhatsApp Style) -->
+    <div style="display: flex; align-items: center; background-color: #075E54; color: white; padding: 15px; margin: -15px -15px 15px -15px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
+        <button onclick="goBackToHome()" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-right: 15px;">←</button>
+        <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Inbox / Messages</h2>
+    </div>
+
+    <!-- Active Chat User Status Info (WhatsApp online bar type) -->
+    <div id="inbox-welcome-text" style="background-color: #fff; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #666; border-left: 4px solid #128C7E;">
+        💬 Aap ki tamam bat-cheet (Chat History) yahan dikhai degi.
+    </div>
+
+    <!-- WhatsApp Chat List Container -->
+    <div id="inbox-messages-list" style="display: flex; flex-direction: column; gap: 10px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-height: 75vh; overflow-y: auto; padding: 5px;">
+        <!-- JavaScript ke zariye yahan dynamic list load hogi -->
+        <p style="text-align: center; color: #888; padding: 20px;">Chats load ho rahi hain...</p>
+    </div>
+</section>
+
     
   </body>
 </html>

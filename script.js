@@ -998,62 +998,70 @@ function renderAdminUsersTable() {
     })
     .join("");
 }
-
 function renderAdminUser() {
-  if (!state.adminUserView) return;
-  const username = state.adminUserView;
-  const u = state.users.find((x) => x.username === username);
-  const container = $("#admin-user-content");
+    if (!state.adminUserView) return;
+    const username = state.adminUserView;
+    const u = state.users.find(x => x.username === username);
+    const container = $("#admin-user-content");
 
-  if (!u) {
+    if (!u) {
+        container.innerHTML = `
+            <div class="empty-block">
+                <div class="big">⚠️</div>
+                <div class="title">User nahi mila</div>
+            </div>`;
+        return;
+    }
+
+    const userPosts = state.posts.filter(p => p.username === username);
+    const initial = (u.fullName || "U").charAt(0).toUpperCase();
+    const joinedDate = u.createdAt 
+        ? new Date(u.createdAt).toLocaleDateString("en-PK", {
+            day: "numeric",
+            month: "short",
+            year: "numeric"
+          })
+        : "-";
+
     container.innerHTML = `
-      <div class="empty-block">
-        <div class="big">⚠️</div>
-        <div class="title">User nahi mila</div>
-      </div>`;
-    return;
-  }
-
-  const userPosts = state.posts.filter((p) => p.username === username);
-  const initial = (u.fullName || "U").charAt(0).toUpperCase();
-  const joinedDate = u.createdAt
-    ? new Date(u.createdAt).toLocaleDateString("en-PK", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : "—";
-
-  container.innerHTML = `
-    <div class="profile-card">
-      <div class="avatar">${escapeHtml(initial)}</div>
-      <div class="profile-info">
-        <div class="profile-name">${escapeHtml(u.fullName)}</div>
-        <div class="profile-handle">@${escapeHtml(u.username)}</div>
-        <div class="profile-meta"><span class="ic">✉️</span><a href="mailto:${escapeHtml(
-          u.email || ""
-        )}">${escapeHtml(u.email || "—")}</a></div>
-        <div class="profile-meta"><span class="ic">📅</span><span class="muted">Joined ${joinedDate}</span></div>
-        <div class="status-badge ${u.blocked ? "blocked" : "active"}">
-          ${u.blocked ? "🚫 BLOCKED" : "✓ ACTIVE"}
+        <div class="profile-card">
+            <div class="avatar">${escapeHtml(initial)}</div>
+            <div class="profile-info">
+                <div class="profile-name">${escapeHtml(u.fullName)}</div>
+                <div class="profile-handle">@${escapeHtml(u.username)}</div>
+                <div class="profile-meta"><span class="ic">📧</span>${u.email ? `<a href="mailto:${escapeHtml(u.email)}">${escapeHtml(u.email)}</a>` : "-"}</div>
+                <div class="profile-meta"><span class="ic">📅</span><span class="muted">Joined ${joinedDate}</span></div>
+                <div class="profile-meta"><span class="ic">📝</span><span class="bold" style="color: #007bff; font-weight: bold;">Total Posts: ${userPosts.length}</span></div>
+                <div class="status-badge ${u.blocked ? 'blocked' : 'active'}">
+                    ${u.blocked ? '🚫 BLOCKED' : '✓ ACTIVE'}
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-    <button class="block-big-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}">
-      🗑 DELETE USER
-    </button>
-    <div class="posts-header">Posts by ${escapeHtml(u.fullName)} (${userPosts.length})</div>
-    <div class="posts-list">
-      ${
-        userPosts.length === 0
-          ? `<div class="empty-block">
-              <div class="big">📭</div>
-              <div class="title">Is user ne abhi koi post nahi ki</div>
-            </div>`
-          : userPosts.map((p) => postCardHTML(p, { adminMode: true })).join("")
-      }
-    </div>`;
+
+        <!-- ADMIN TO USER CHAT SHORTCUT -->
+        <div style="margin: 15px 0;">
+            <button class="btn btn-outline" style="background: #25D366; color: white; border: none; width: 100%; padding: 12px; font-weight: bold; border-radius: 8px;" onclick="state.currentChatUser='${escapeHtml(u.username)}'; state.currentChatName='${escapeHtml(u.fullName)}'; showScreen('chat-room'); if(typeof loadChatRoom==='function') loadChatRoom();">
+                💬 Chat With ${escapeHtml(u.fullName)}
+            </button>
+        </div>
+
+        <button class="block-big-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}">
+            🗑️ DELETE USER
+        </button>
+        <div class="posts-header">Posts by ${escapeHtml(u.fullName)} (${userPosts.length})</div>
+        <div class="posts-list">
+            ${userPosts.length === 0
+                ? `
+                <div class="empty-block">
+                    <div class="big">📭</div>
+                    <div class="title">Is user ne abhi koi post nahi ki</div>
+                </div>`
+                : userPosts.map(p => postCardHTML(p, { adminMode: true })).join("")
+            }
+        </div>
+    `;
 }
+
 
 function updateBottomHint() {
   const el = $("#bottom-hint");

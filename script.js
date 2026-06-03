@@ -1470,23 +1470,28 @@ function closeAdminGate() {
 }
 
 /* ----------------------------- Boot ----------------------------- */
-function enterApp() {
-  updateBottomHint();
-  subscribeStats();
-  if (state.user.isAdmin) {
-    showScreen("admin");
-    subscribePosts();
-    subscribeUsers();
-    renderAdminUsersTable();
-    renderAdminStats();
-    renderReportedPosts();
-  } else {
-    showScreen("home");
-    subscribePosts();
-    renderHome();
-    updateSuccessBar();
-  }
-}
+ function enterApp() {
+    updateBottomHint();
+    subscribeStats();
+    if (state.user.isAdmin) {
+        showScreen("admin");
+        subscribePosts();
+        subscribeUsers();
+        renderAdminUsersTable();
+        renderAdminStats();
+        renderReportedPosts();
+    } else {
+        showScreen("home");
+        subscribePosts();
+        renderHome();
+        updateSuccessBar();
+        
+        // NIMRA / MADADGAR CHAT LIVE CHALANE KE LIYE FIXED:
+        loadChatHistory();
+        listenForChatNotifications();
+    }
+ }
+
 
 function init() {
   attachEvents();
@@ -1569,144 +1574,149 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
-// ====== MADADGAR USER PROFILE SYSTEM ======
+//    
+// ====== MADADGAR USER PROFILE SYSTEM (FIXED POINT 1 & 2) ======
 
-// Gallery se Image select hone par Firebase Storage par upload karna
+// Gallery se Image select hone par Instant Preview dikhana aur Firebase par save karna
 const profileFilePicker = document.getElementById('profile-file-picker');
 if (profileFilePicker) {
     profileFilePicker.addEventListener('change', function(e) {
         if (e.target.files && e.target.files[0]) {
             let file = e.target.files[0];
             
-            // Check current user log-in ID (Default "test_user" agar dynamic na ho)
-            let currentUserID = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.uid : "test_user";
+            // Safe current user node determine karna
+            let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
             
-            // Image ko thoda dhundla (blur) kar dein loading dikhane ke liye
+            // POINT 1 FIX: FileReader ka use taake image select hote hi FORAN screen par show ho jaye
             const myProfilePic = document.getElementById('my-profile-pic');
-            if(myProfilePic) myProfilePic.style.opacity = "0.5";
+            if (myProfilePic) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    myProfilePic.src = event.target.result; // Instant preview
+                    myProfilePic.style.opacity = "0.5";    // Loading effect
+                };
+                reader.readAsDataURL(file);
+            }
             
-            // Firebase Storage reference path
+            // Firebase Storage par pic upload karna
             let storageRef = firebase.storage().ref('profile_pics/' + currentUserID + '.jpg');
             
-            // File upload process
             storageRef.put(file).then((snapshot) => {
                 snapshot.ref.getDownloadURL().then((downloadURL) => {
-                    if(myProfilePic) {
+                    if (myProfilePic) {
                         myProfilePic.src = downloadURL;
-                        myProfilePic.style.opacity = "1";
+                        myProfilePic.style.opacity = "1"; // Normal opacity after success
                     }
                     
-                    // Realtime Database mein link save karna
-                    firebase.database().ref('Users/' + currentUserID).update({
-                        profile_pic: downloadURL
+                    // App state update karna
+                    if (state.user) state.user.profilePic = downloadURL;
+                    persistUser();
+                    
+                    // Realtime Database mein sahi node 'users/username/profilePic' par save karna
+                    firebase.database().ref('users/' + currentUserID).update({
+                        profilePic: downloadURL
                     });
                     
                     alert("Profile picture kamyabi se upload ho gayi! 🔥");
                 });
             }).catch((error) => {
                 console.error(error);
-                if(myProfilePic) myProfilePic.style.opacity = "1";
+                if (myProfilePic) myProfilePic.style.opacity = "1";
                 alert("Upload karne mein koi masla aaya.");
             });
         }
     });
 }
 
-// Real Name modal mein dikhane ka function
-function updateProfileModalName(name) {
-    const myProfileName = document.getElementById('my-profile-name');
-    if(myProfileName && name) {
-        myProfileName.innerText = name;
-    }
-}
-// Firebase Auth State change hone par ya login hone par naam popup mein daalne ke liye
-firebase.auth().onAuthStateChanged((user) => {
-    if (user) {
-        // User login hai, us ka naam database ya auth se nikalna
-        let userName = user.displayName || "MADADGAR User";
+// POINT 2 FIX: Jab bhi profile modal open ho, automatically account ka real name set ho jaye
+function openProfileModal() {
+    const modal = document.getElementById('profile-modal');
+    if (!modal) return;
+
+    if (state.user) {
+        // Form ke labels ko user details se bharna
+        const nameField = document.getElementById('my-profile-name');
+        const handleField = document.getElementById('my-profile-status');
+        const picField = document.getElementById('my-profile-pic');
+
+        if (nameField) nameField.innerText = state.user.fullName || "MADADGAR User";
+        if (handleField) handleField.innerText = "@" + (state.user.username || "username");
         
-        // Agar aap ke database mein name alag node par hai toh hum wahan se fetch karenge
-        firebase.database().ref('Users/' + user.uid).once('value').then((snapshot) => {
-            if (snapshot.exists() && snapshot.val().name) {
-                userName = snapshot.val().name;
-            }
-            // Screen par naam aur pic update kar do
-            const nameField = document.getElementById('my-profile-name');
-            if (nameField) nameField.innerText = userName;
-            
-            if (snapshot.exists() && snapshot.val().profile_pic) {
-                const picField = document.getElementById('my-profile-pic');
-                if (picField) picField.src = snapshot.val().profile_pic;
-            }
-        });
+        // Agar database mein profile picture pehle se majood hai to wo dikhaye
+        if (state.user.profilePic && picField) {
+            picField.src = state.user.profilePic;
+        }
     }
-});
-// ====== MADADGAR DIRECT MESSAGING SYSTEM ======
+
+    modal.style.display = 'flex';
+}
+
+
+// ====== MADADGAR DIRECT MESSAGING & CHAT HISTORY SYSTEM (POINT 3, 4 & 5) ======
 
 let currentChatRoomID = "";
 
-// Chat Window Kholne aur purane messages load karne ka function
+// Chat Window Kholne aur messages load karne ka function
 function openChatWithUser(receiverID, receiverName, receiverPic) {
-    let currentUserID = firebase.auth().currentUser ? firebase.auth().currentUser.uid : "test_user";
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
     
-    // Agar user khud ko hi message bhejne ki koshish kare
     if (currentUserID === receiverID) {
         alert("Aap apne aap ko message nahi bhej sakte!");
         return;
     }
 
-    // Ek unique chat room ID banana (Humesha alphabetically sort kar ke taake dono side se same room khule)
+    // Unique alphabetical Chat Room ID
     currentChatRoomID = currentUserID < receiverID ? currentUserID + "_" + receiverID : receiverID + "_" + currentUserID;
     
-    // Header mein worker/client ka naam aur pic set karna
+    // UI update karna
     document.getElementById('chat-user-name').innerText = receiverName || "MADADGAR User";
-    if (receiverPic) {
-        document.getElementById('chat-user-pic').src = receiverPic;
-    } else {
-        document.getElementById('chat-user-pic').src = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
-    }
+    document.getElementById('chat-user-pic').src = receiverPic || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
     
-    // Chat modal ko screen par dikhana
     document.getElementById('chat-modal').style.display = 'flex';
     
-    // Firebase database se is room ke messages real-time load karna
-    firebase.database().ref('Chats/' + currentChatRoomID + '/messages').on('value', (snapshot) => {
+    // Messages ko load karna aur sath hi is room ke unread status ko khatam karna (Read mark karna)
+    firebase.database().ref('chats/' + currentChatRoomID + '/messages').on('value', (snapshot) => {
         const messagesArea = document.getElementById('chat-messages-area');
-        messagesArea.innerHTML = ""; // Purani screen saaf karein
+        messagesArea.innerHTML = ""; 
         
         if (snapshot.exists()) {
             snapshot.forEach((childSnapshot) => {
                 let msgData = childSnapshot.val();
-                
-                // Message ka bubble card banana
                 let msgBubble = document.createElement('div');
                 
-                // Styling base on sender (Mera message right par, samne wale ka left par)
                 if (msgData.senderID === currentUserID) {
-                    msgBubble.style = "align-self: flex-end; background-color: #0046c7; color: white; padding: 10px 15px; border-radius: 15px 15px 0px 15px; max-width: 75%; word-wrap: break-word; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
+                    msgBubble.style = "align-self: flex-end; background-color: #1E40AF; color: white; padding: 10px 15px; border-radius: 15px 15px 0px 15px; max-width: 75%; word-wrap: break-word; font-size: 14px; margin-bottom: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
                 } else {
-                    msgBubble.style = "align-self: flex-start; background-color: white; color: #333; padding: 10px 15px; border-radius: 15px 15px 15px 0px; max-width: 75%; word-wrap: break-word; font-size: 14px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
+                    msgBubble.style = "align-self: flex-start; background-color: white; color: #333; padding: 10px 15px; border-radius: 15px 15px 15px 0px; max-width: 75%; word-wrap: break-word; font-size: 14px; margin-bottom: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);";
                 }
                 
                 msgBubble.innerText = msgData.text;
                 messagesArea.appendChild(msgBubble);
             });
-            
-            // Chat ko automatic scroll kar ke bilkul niche le jana
             messagesArea.scrollTop = messagesArea.scrollHeight;
         } else {
             messagesArea.innerHTML = "<p style='text-align:center; color:#999; font-size:13px; margin-top:20px;'>Abhi tak koi message nahi hai. Chat shuru karein!</p>";
         }
     });
+
+    // Jab chat open ho jaye, to notification count zero kar dein (POINT 4)
+    firebase.database().ref('chats/' + currentChatRoomID + '/unread/' + currentUserID).set(0);
 }
 
 // Message Send karne ka function
 function sendMessage() {
-    let currentUserID = firebase.auth().currentUser ? firebase.auth().currentUser.uid : "test_user";
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
+    let currentUserFullName = (state.user && state.user.fullName) ? state.user.fullName : "MADADGAR User";
+    let currentUserPic = (state.user && state.user.profilePic) ? state.user.profilePic : "";
+    
     let inputField = document.getElementById('chat-input-text');
     let messageText = inputField.value.trim();
     
     if (messageText === "" || currentChatRoomID === "") return;
+    
+    // Room se receiver ID nikalna
+    let ids = currentChatRoomID.split("_");
+    let receiverID = ids[0] === currentUserID ? ids[1] : ids[0];
     
     let messageData = {
         senderID: currentUserID,
@@ -1714,11 +1724,126 @@ function sendMessage() {
         timestamp: firebase.database.ServerValue.TIMESTAMP
     };
     
-    // Firebase database mein message push karna
-    firebase.database().ref('Chats/' + currentChatRoomID + '/messages').push(messageData).then(() => {
-        inputField.value = ""; // Input clear karein
+    // 1. Message push karna
+    firebase.database().ref('chats/' + currentChatRoomID + '/messages').push(messageData).then(() => {
+        inputField.value = ""; 
+        
+        // 2. Chat Room Info update karna (WhatsApp list ke liye meta data)
+        firebase.database().ref('chat_rooms/' + currentChatRoomID).set({
+            lastMessage: messageText,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            users: {
+                [currentUserID]: true,
+                [receiverID]: true
+            },
+            names: {
+                [currentUserID]: currentUserFullName,
+                [receiverID]: document.getElementById('chat-user-name').innerText
+            },
+            pics: {
+                [currentUserID]: currentUserPic,
+                [receiverID]: document.getElementById('chat-user-pic').src
+            }
+        });
+
+        // 3. Receiver ke unread counter ko barhana (POINT 4)
+        firebase.database().ref('chats/' + currentChatRoomID + '/unread/' + receiverID).transaction((currentCount) => {
+            return (currentCount || 0) + 1;
+        });
     });
 }
+
+// WHATSAPP STYLE CHAT HISTORY LIST LOAD KARNA (POINT 3 & 5)
+function loadChatHistory() {
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
+    const listContainer = document.getElementById('chats-list-container');
+    const loadingText = document.getElementById('chats-loading');
+    
+    if (!listContainer) return;
+
+    firebase.database().ref('chat_rooms').orderByChild('timestamp').on('value', (snapshot) => {
+        if (loadingText) loadingText.style.display = 'none';
+        listContainer.innerHTML = ""; 
+
+        let hasChats = false;
+
+        if (snapshot.exists()) {
+            let rooms = [];
+            snapshot.forEach((child) => {
+                rooms.unshift({ id: child.key, ...child.val() }); // Latest chats top par
+            });
+
+            rooms.forEach((room) => {
+                if (room.users && room.users[currentUserID]) {
+                    hasChats = true;
+                    
+                    let ids = room.id.split("_");
+                    let otherUserID = ids[0] === currentUserID ? ids[1] : ids[0];
+                    let otherUserName = room.names ? (room.names[otherUserID] || "MADADGAR User") : "MADADGAR User";
+                    let otherUserPic = room.pics ? (room.pics[otherUserID] || "") : "";
+                    
+                    if (!otherUserPic) {
+                        otherUserPic = "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                    }
+
+                    let chatCard = document.createElement('div');
+                    chatCard.style = "background-color: white; padding: 12px; border-radius: 10px; display: flex; align-items: center; gap: 12px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: background 0.2s; margin-bottom: 8px;";
+                    chatCard.onclick = () => openChatWithUser(otherUserID, otherUserName, otherUserPic);
+                    
+                    chatCard.innerHTML = `
+                        <img src="${otherUserPic}" style="width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #1E40AF;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: bold; color: #111827; font-size: 15px;">${escapeHtml(otherUserName)}</div>
+                            <div style="color: #6B7280; font-size: 13px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; margin-top: 2px;">${escapeHtml(room.lastMessage)}</div>
+                        </div>
+                    `;
+                    listContainer.appendChild(chatCard);
+                }
+            });
+        }
+
+        if (!hasChats) {
+            listContainer.innerHTML = "<p style='text-align:center; color:#666; margin-top:30px;'>Abhi tak koi chat history nahi hai.</p>";
+        }
+    });
+}
+
+// REAL-TIME NOTIFICATION BADGE LISTENERS (POINT 4)
+function listenForChatNotifications() {
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
+    
+    firebase.database().ref('chats').on('value', (snapshot) => {
+        let totalUnread = 0;
+        
+        if (snapshot.exists()) {
+            snapshot.forEach((room) => {
+                let unreadData = room.child('unread').val();
+                if (unreadData && unreadData[currentUserID]) {
+                    totalUnread += unreadData[currentUserID];
+                }
+            });
+        }
+        
+        const badge = document.getElementById('chat-nav-badge');
+        if (badge) {
+            if (totalUnread > 0) {
+                badge.innerText = totalUnread;
+                badge.style.display = "inline-block";
+            } else {
+                badge.style.display = "none";
+            }
+        }
+    });
+           }
+// Security helper function to escape HTML characters
+function escapeHtml(text) {
+    if (!text) return "";
+    return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
    
-
-
+           

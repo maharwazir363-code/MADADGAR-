@@ -1876,6 +1876,15 @@ function openInboxScreen() {
         loadChatHistory();
     }
 }
+function goBackToHome() {
+    // Inbox screen ko chhupayein aur home screen dikhayein
+    const historyScreen = document.getElementById('chat-history-screen');
+    const homeScreen = document.getElementById('screen-home');
+    
+    if (historyScreen) historyScreen.style.display = 'none';
+    if (homeScreen) homeScreen.style.display = 'block';
+}
+
 
    
            

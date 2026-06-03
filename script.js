@@ -1884,6 +1884,118 @@ function goBackToHome() {
     if (historyScreen) historyScreen.style.display = 'none';
     if (homeScreen) homeScreen.style.display = 'block';
 }
+function loadChatHistory() {
+    // 1. Current logged in user ki ID check karein
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "";
+    if (!currentUserID && firebase.auth().currentUser) {
+        currentUserID = firebase.auth().currentUser.uid;
+    }
+
+    const inboxContainer = document.getElementById("inbox-messages-list");
+    if (!inboxContainer) return;
+
+    inboxContainer.innerHTML = `<p style="text-align: center; color: #888; padding: 20px;">Chats load ho rahi hain...</p>`;
+
+    // 2. Firebase se real-time 'chats' node ko listen karna
+    db.ref('chats').on('value', (snapshot) => {
+        inboxContainer.innerHTML = ""; // Purana data saaf karein
+        let hasChats = false;
+
+        if (snapshot.exists()) {
+            snapshot.forEach((chatRoom) => {
+                const roomID = chatRoom.key;
+
+                // Check karein ke kya is chat room mein current user shamil hai
+                if (roomID.includes(currentUserID)) {
+                    hasChats = true;
+                    const chatData = chatRoom.val();
+
+                    // Dusre user ki ID nikalna (jo aap ke sath chat kar raha hai)
+                    const otherUserID = roomID.replace(currentUserID, "").replace("_", "");
+
+                    // Last message nikalna
+                    let lastMessage = "No messages yet";
+                    if (chatData.messages) {
+                        const msgArray = Object.values(chatData.messages);
+                        if (msgArray.length > 0) {
+                            lastMessage = msgArray[msgArray.length - 1].text || "Attachment/Image";
+                        }
+                    }
+
+                    // Unread badge count check karna
+                    let unreadCount = 0;
+                    if (chatData.unread && chatData.unread[currentUserID]) {
+                        unreadCount = chatData.unread[currentUserID];
+                    }
+
+                    // Badge HTML agar unread messages hon
+                    let badgeHTML = unreadCount > 0 
+                        ? `<span style="background-color: #25D366; color: white; border-radius: 50%; padding: 3px 8px; font-size: 11px; font-weight: bold; min-width: 18px; text-align: center;">${unreadCount}</span>` 
+                        : '';
+
+                    // Firebase se dusre user ka actual Name fetch karne ke liye temporary element id
+                    const nameSpanId = `inbox-name-${otherUserID}`;
+
+                    // WhatsApp Style Row Banana
+                    const chatRow = document.createElement("div");
+                    chatRow.style = "display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: background 0.2s;";
+                    chatRow.className = "inbox-chat-item";
+                    
+                    // Hover effect dynamically lagane ke liye JS events
+                    chatRow.onmouseover = () => { chatRow.style.backgroundColor = "#f9f9f9"; };
+                    chatRow.onmouseout = () => { chatRow.style.backgroundColor = "white"; };
+
+                    chatRow.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 12px; width: 80%;">
+                            <!-- User Avatar Profile Circle -->
+                            <div style="width: 45px; height: 45px; background-color: #075E54; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; flex-shrink: 0;">
+                                ${otherUserID.charAt(0).toUpperCase()}
+                            </div>
+                            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">
+                                <h4 id="${nameSpanId}" style="margin: 0 0 4px 0; font-size: 15px; color: #333; font-weight: 600;">${otherUserID}</h4>
+                                <p style="margin: 0; font-size: 13px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${lastMessage}</p>
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 5px;">
+                            ${badgeHTML}
+                        </div>
+                    `;
+
+                    // Click karne par direct chat screen khul jaye (Aap ki existing chat screen launch hogi)
+                    chatRow.onclick = () => {
+                        if (typeof openChat === "function") {
+                            openChat(otherUserID); 
+                        } else if (typeof startChatWith === "function") {
+                            startChatWith(otherUserID);
+                        } else {
+                            // Agar custom function nahi milta to modal ya target setup chalayein
+                            alert("Chat opening function not found. Target: " + otherUserID);
+                        }
+                    };
+
+                    inboxContainer.appendChild(chatRow);
+
+                    // Background mein users node se is user ka real Name utha kar update karna
+                    db.ref('users/' + otherUserID).once('value').then((userSnap) => {
+                        if (userSnap.exists() && userSnap.val().name) {
+                            const nameEl = document.getElementById(nameSpanId);
+                            if (nameEl) nameEl.innerText = userSnap.val().name;
+                        }
+                    });
+                }
+            });
+        }
+
+        if (!hasChats) {
+            inboxContainer.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: #999;">
+                    <span style="font-size: 40px;">📭</span>
+                    <p style="margin-top: 10px; font-size: 14px;">Abhi tak koi chat maujood nahi hai.</p>
+                </div>`;
+        }
+    });
+}
+
 
 
    

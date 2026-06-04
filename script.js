@@ -1995,6 +1995,68 @@ function loadChatHistory() {
         }
     });
 }
+function loadUserChatsInAdmin(targetUserId) {
+    const messagesContainer = document.getElementById("admin-user-messages-container");
+    if (!messagesContainer) return;
+
+    messagesContainer.innerHTML = `<p style="color: #666; font-size: 13px;">Chats scan ho rahi hain...</p>`;
+
+    // Firebase se saari chats check karna
+    firebase.database().ref('chats').once('value').then((snapshot) => {
+        messagesContainer.innerHTML = ""; // Purana data clear karein
+        let hasChats = false;
+
+        if (snapshot.exists()) {
+            snapshot.forEach((chatRoom) => {
+                const roomId = chatRoom.key;
+                
+                // Agar is room ID me is user ki ID shamil hai to matlab ye iski chat hai
+                if (roomId.includes(targetUserId)) {
+                    hasChats = true;
+                    const chatData = chatRoom.val();
+                    const messages = chatData.messages ? Object.values(chatData.messages) : [];
+                    
+                    // Dusre user ki ID nikalna jisse ye baat kar raha tha
+                    const companionId = roomId.replace(targetUserId, "").replace("_", "");
+
+                    // Ek chat box container banana
+                    const chatBox = document.createElement("div");
+                    chatBox.style = "background: #f9f9f9; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 5px;";
+                    
+                    let chatHeaderHTML = `<div style="font-size: 13px; font-weight: bold; color: #128C7E; margin-bottom: 8px; border-bottom: 1px dashed #ccc; padding-bottom: 4px;">
+                                            Chat Room: ${targetUserId} ⇆ ${companionId}
+                                          </div>
+                                          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding-right: 5px;">`;
+                    
+                    // Saare messages ko loop kar ke nikalna
+                    messages.forEach((msg) => {
+                        const senderLabel = msg.sender === targetUserId ? "User" : "Opponent";
+                        const msgColor = msg.sender === targetUserId ? "#075E54" : "#444";
+                        
+                        chatHeaderHTML += `
+                            <div style="font-size: 12px; line-height: 1.4;">
+                                <strong style="color: ${msgColor};">${senderLabel}:</strong> 
+                                <span>${msg.text}</span>
+                                <span style="font-size: 10px; color: #999; margin-left: 5px;">(${msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''})</span>
+                            </div>`;
+                    });
+
+                    chatHeaderHTML += `</div>`;
+                    chatBox.innerHTML = chatHeaderHTML;
+                    messagesContainer.appendChild(chatBox);
+                }
+            });
+        }
+
+        if (!hasChats) {
+            messagesContainer.innerHTML = `<p style="color: #999; font-size: 13px; text-align: center; padding: 10px;">Is user ne abhi tak kisi se koi chat nahi ki.</p>`;
+        }
+    }).catch((error) => {
+        console.error("Admin chat loading error: ", error);
+        messagesContainer.innerHTML = `<p style="color: red; font-size: 13px;">Data load karne me masla aaya hai.</p>`;
+    });
+}
+
 
 
 

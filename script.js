@@ -1483,6 +1483,8 @@ function closeAdminGate() {
 
 /* ----------------------------- Boot ----------------------------- */
  function enterApp() {
+    setupUserPresence();
+
     updateBottomHint();
     subscribeStats();
     if (state.user.isAdmin) {

@@ -2119,6 +2119,66 @@ function loadUserChatsInAdmin(targetUserId) {
         messagesContainer.innerHTML = `<p style="color: red; font-size: 13px;">Data load karne me masla aaya hai.</p>`;
     });
 }
+// 1. User ka Online/Offline Status Firebase me automatically track karna
+function setupUserPresence() {
+    let currentUserID = (state.user && state.user.username) ? state.user.username : "";
+    if (!currentUserID && firebase.auth().currentUser) {
+        currentUserID = firebase.auth().currentUser.uid;
+    }
+    
+    if (!currentUserID) return; // Agar user login nahi hai to ruk jayein
+
+    const userStatusRef = firebase.database().ref('/users/' + currentUserID + '/status');
+
+    // Firebase connection status check karna
+    firebase.database().ref('.info/connected').on('value', (snapshot) => {
+        if (snapshot.val() == false) {
+            return;
+        }
+
+        // Jab user disconnect ho (app band kare), to database me automatic updates set karein
+        userStatusRef.onDisconnect().set({
+            state: 'offline',
+            last_changed: firebase.database.ServerValue.TIMESTAMP
+        }).then(() => {
+            // Jab user online ho, to status update karein
+            userStatusRef.set({
+                state: 'online',
+                last_changed: firebase.database.ServerValue.TIMESTAMP
+            });
+        });
+    });
+}
+
+// 2. Dusre user ka status real-time chat screen ke top bar par dikhana
+function listenToUserPresence(targetUserId) {
+    const statusElement = document.getElementById("chat-user-status"); // Dynamic header subtext ID
+    if (!statusElement) return;
+
+    firebase.database().ref('/users/' + targetUserId + '/status').on('value', (snapshot) => {
+        if (!snapshot.exists()) {
+            statusElement.innerText = "offline";
+            statusElement.style.color = "#888";
+            return;
+        }
+
+        const status = snapshot.val();
+        if (status.state === "online") {
+            statusElement.innerText = "online";
+            statusElement.style.color = "#25D366"; // Green color for online
+        } else {
+            statusElement.style.color = "#888";
+            if (status.last_changed) {
+                const date = new Date(status.last_changed);
+                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                statusElement.innerText = "last seen today at " + timeString;
+            } else {
+                statusElement.innerText = "offline";
+            }
+        }
+    });
+}
+
 
 
 

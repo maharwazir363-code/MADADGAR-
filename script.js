@@ -598,6 +598,7 @@ function postCardHTML(post, opts = {}) {
       ${post.verified ? '<span class="tag worker">✓ Verified</span>' : ""}
     </div>`;
            if (post.done) {
+                      if (post.done) {
             inner += `<div class="done-badge">✓ ALHAMDULILLAH! KAAM HO GAYA</div>`;
         }
 
@@ -639,7 +640,7 @@ function postCardHTML(post, opts = {}) {
             inner += `
                 <div class="post-actions">
                     ${doneBtn}
-                    <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobile)}">Call</button>
+                    <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobile || '')}">Call</button>
                     ${deleteBtn}
                 </div>`;
         } else {
@@ -657,7 +658,6 @@ function postCardHTML(post, opts = {}) {
 
                 inner += `
                     <div class="post-actions" style="display: flex; flex-direction: column; gap: 5px;">
-                        <!-- Blue Color VIP Chat Button -->
                         <button type="button" class="action-btn" onclick="openChatWithUser('${post.userId || 'test_user'}', '${escapeHtml(post.name || 'User')}')" style="background-color: #007bff; color: white;">💬 Chat</button>
                         <div style="display: flex; gap: 5px; width: 100%;">
                             <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}" style="flex: 1;">📞 Call</button>
@@ -666,8 +666,20 @@ function postCardHTML(post, opts = {}) {
                     </div>`;
             }
         }
-           inner += `</div>`;
-    }
+
+        inner += `</div>`;
+        list.innerHTML += inner;
+    });
+}
+
+            
+
+        inner += `</div>`;
+        list.innerHTML += inner;
+    });
+}
+
+            
 
 function renderHome() {
 

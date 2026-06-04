@@ -2157,7 +2157,7 @@ function setupUserPresence() {
     });
 }
 
-// 2. Dusre user ka status real-time chat screen ke top bar par dikhana
+ // 2. Dusre user ka status real-time chat screen ke top bar par dikhana
 function listenToUserPresence(targetUserId) {
     const statusElement = document.getElementById("chat-user-status"); // Dynamic header subtext ID
     if (!statusElement) return;
@@ -2185,6 +2185,7 @@ function listenToUserPresence(targetUserId) {
         }
     });
 }
+
 function closeChatModal() {
     // 1. Modal ko chupao
     const chatModal = document.getElementById('chat-modal');
@@ -2196,12 +2197,3 @@ function closeChatModal() {
         console.log("Presence tracking stopped for: " + state.activeChat);
     }
 }
-
-
-
-
-
-
-
-   
-           

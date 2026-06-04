@@ -597,90 +597,82 @@ function postCardHTML(post, opts = {}) {
       <span class="tag ${tagClass}">${tagText}</span>
       ${post.verified ? '<span class="tag worker">✓ Verified</span>' : ""}
     </div>`;
+           if (post.done) {
+            inner += `<div class="done-badge">✓ ALHAMDULILLAH! KAAM HO GAYA</div>`;
+        }
 
-  if (post.done) {
-    inner += `<div class="done-badge">✓ ALHAMDULILLAH! KAAM HO GAYA</div>`;
-  }
+        if (post.category) {
+            inner += `<div class="post-row bold"><span class="ic">🛠️</span><span>${post.category}</span></div>`;
+        }
 
-  if (post.category) {
-    inner += `<div class="post-row bold"><span class="ic">🛠</span><span>${escapeHtml(
-      post.category
-    )}</span></div>`;
-  }
-  if (post.salary) {
-    inner += `<div class="post-row"><span class="ic">💰</span><span class="salary">${escapeHtml(
-      post.salary
-    )}</span></div>`;
-  }
-  inner += `<div class="post-row"><span class="ic">📍</span><span class="address">${escapeHtml(
-    post.address || ""
-  )}</span></div>`;
-  if (ownerName) {
-    inner += `<div class="post-row"><span class="ic">👤</span><span>${escapeHtml(
-      ownerName
-    )}</span></div>`;
-  }
-  inner += `<div class="post-meta">${timeAgo(post.createdAt)} • ${
-    post.viewCount || 0
-  } views</div>`;
-   // Action buttons
-const isOwner = state.user && post.username === state.user.username;
+        if (post.salary) {
+            inner += `<div class="post-row"><span class="ic">💰</span><span>${post.salary}</span></div>`;
+        }
 
-if (opts.adminMode) {
-    const resetBtn = post.done
-      ? `<button class="action-btn reset" data-act="reset-done" data-id="${post.id}">Reset</button>`
-      : "";
-    inner += `
-      <div class="post-actions">
-        ${resetBtn}
-        <button class="action-btn edit-post-btn" data-act="edit-post" data-id="${post.id}">Edit</button>
-        <button class="action-btn delete" data-act="delete-post" data-id="${post.id}">Delete</button>
-      </div>`;
-} else if (isOwner) {
-    // Owner sees Mark-as-Done (only if not already done), Call, Delete
-    const doneBtn = post.done
-      ? ""
-      : `<button class="action-btn done" data-act="mark-done" data-id="${post.id}">✓ Mark as Done</button>`;
-    const deleteBtn = opts.myMode
-      ? `<button class="action-btn delete" data-act="delete-mine" data-id="${post.id}">🗑️ Delete</button>`
-      : "";
-    inner += `
-      <div class="post-actions">
-        ${doneBtn}
-        <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}">📞 Call</button>
-        ${deleteBtn}
-      </div>`;
-} else if (!post.done) {
-    // Non-owner viewers – Message + Call + Report buttons
-    const alreadyReported = (() => {
-        try {
-            const key = "madadgar_reported_v1";
-            return JSON.parse(localStorage.getItem(key) || "[]").includes(post.id);
-        } catch { return false; }
-    })();
+        inner += `<div class="post-row"><span class="ic">📍</span><span>${post.address || ""}</span></div>`;
 
-    const reportBtn = alreadyReported
-      ? `<button class="action-btn report" disabled style="opacity:.5; cursor:default">✓ Reported</button>`
-      : `<button class="action-btn report" data-act="report-post" data-id="${post.id}">⚠️ Report</button>`;
+        if (ownerName) {
+            inner += `<div class="post-row"><span class="ic">👤</span><span>${ownerName}</span></div>`;
+        }
 
-    inner += `
-      <div class="post-actions" style="display: flex; flex-direction: column; gap: 5px;">
-        <!-- Blue Color VIP Chat Button -->
-        <button type="button" class="action-btn" onclick="openChatWithUser('${post.userId || 'test_user'}', '${escapeHtml(post.name || 'MADADGAR User')}', '${post.profilePic || ''}')" style="background-color: #1E40AF; color: white; border: none; padding: 8px; border-radius: 5px; font-weight: bold; cursor: pointer; width: 100%;">💬 Message Karein</button>
-        
-        <div style="display: flex; gap: 5px; width: 100%;">
-          <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}" style="flex: 1;">📞 Call</button>
-          <div style="flex: 1;">${reportBtn}</div>
-        </div>
-      </div>`;
-}
+        inner += `<div class="post-meta">${timeAgo(post.createdAt)} • ${post.viewCount || 0} views</div>`;
 
+        const isOwner = state.user && post.username === state.user.username;
 
-  return `<div class="post-card" data-post="${post.id}">${inner}</div>`;
-}
+        if (opts.adminMode) {
+            const resetBtn = post.done
+                ? `<button class="action-btn reset" data-act="reset-done" data-id="${post.id}">Reset</button>`
+                : "";
+            inner += `
+                <div class="post-actions">
+                    ${resetBtn}
+                    <button class="action-btn edit-post-btn" data-act="edit-post" data-id="${post.id}">Edit</button>
+                    <button class="action-btn delete" data-act="delete-post" data-id="${post.id}">Delete</button>
+                </div>`;
+        } else if (isOwner) {
+            const doneBtn = post.done
+                ? ""
+                : `<button class="action-btn done" data-act="mark-done" data-id="${post.id}">✓ Mark as Done</button>`;
+            const deleteBtn = opts.myMode
+                ? `<button class="action-btn delete" data-act="delete-mine" data-id="${post.id}">Delete</button>`
+                : "";
+            inner += `
+                <div class="post-actions">
+                    ${doneBtn}
+                    <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobile)}">Call</button>
+                    ${deleteBtn}
+                </div>`;
+        } else {
+            if (!post.done) {
+                const alreadyReported = (() => {
+                    try {
+                        const key = "madadgar_reported_v1";
+                        return JSON.parse(localStorage.getItem(key) || "[]").includes(post.id);
+                    } catch { return false; }
+                })();
+
+                const reportBtn = alreadyReported
+                    ? `<button class="action-btn report" disabled style="opacity:.5; cursor:default">Reported</button>`
+                    : `<button class="action-btn report" data-act="report-post" data-id="${post.id}">⚠️ Report</button>`;
+
+                inner += `
+                    <div class="post-actions" style="display: flex; flex-direction: column; gap: 5px;">
+                        <!-- Blue Color VIP Chat Button -->
+                        <button type="button" class="action-btn" onclick="openChatWithUser('${post.userId || 'test_user'}', '${escapeHtml(post.name || 'User')}')" style="background-color: #007bff; color: white;">💬 Chat</button>
+                        <div style="display: flex; gap: 5px; width: 100%;">
+                            <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}" style="flex: 1;">📞 Call</button>
+                            <div style="flex: 1;">${reportBtn}</div>
+                        </div>
+                    </div>`;
+            }
+        }
+           inner += `</div>`;
+    }
 
 function renderHome() {
-  const list = $("#posts-list");
+
+
+         
   if (!state.postsLoaded) {
     list.innerHTML = `
       <div class="loading-block">

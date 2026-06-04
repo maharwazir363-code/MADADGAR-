@@ -2183,6 +2183,18 @@ function listenToUserPresence(targetUserId) {
         }
     });
 }
+function closeChatModal() {
+    // 1. Modal ko chupao
+    const chatModal = document.getElementById('chat-modal');
+    if (chatModal) chatModal.style.display = 'none';
+    
+    // 2. Firebase status check listener ko band karo
+    if (state.activeChat) {
+        firebase.database().ref('/users/' + state.activeChat + '/status').off();
+        console.log("Presence tracking stopped for: " + state.activeChat);
+    }
+}
+
 
 
 

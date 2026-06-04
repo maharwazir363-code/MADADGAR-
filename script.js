@@ -183,6 +183,8 @@ async function handleLogin(e) {
       isAdmin: false,
     };
     persistUser();
+     setupUserPresence();
+
     enterApp();
   } catch (err) {
     console.error("Login error:", err.code, err.message);

@@ -1012,6 +1012,8 @@ function renderAdminUser() {
             </div>`;
         return;
     }
+   loadUserChatsInAdmin(username);
+
 
     const userPosts = state.posts.filter(p => p.username === username);
     const initial = (u.fullName || "U").charAt(0).toUpperCase();

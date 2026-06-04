@@ -1732,6 +1732,8 @@ function sendMessage() {
     // Room se receiver ID nikalna
     let ids = currentChatRoomID.split("_");
     let receiverID = ids[0] === currentUserID ? ids[1] : ids[0];
+                    
+
     
     let messageData = {
         senderID: currentUserID,

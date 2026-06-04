@@ -1671,7 +1671,8 @@ function openProfileModal() {
 let currentChatRoomID = "";
 
 // Chat Window Kholne aur messages load karne ka function
-function openChatWithUser(receiverID, receiverName, receiverPic) {
+function openChatWithUser(receiverID, receiverName, receiverPic) { listenToUserPresence(receiverID);
+
     let currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
     
     if (currentUserID === receiverID) {

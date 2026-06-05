@@ -37,14 +37,7 @@ const state = {
   usersError: null,
   viewedThisSession: new Set(),
 };
-// Test Code: Loading pakadne ke liye
-setTimeout(() => {
-    console.log("Posts Loaded Status:", state.postsLoaded);
-    console.log("Users Loaded Status:", state.usersLoaded);
-    if (!state.postsLoaded || !state.usersLoaded) {
-        alert("Dost! Data load nahi ho raha. Posts: " + state.postsLoaded + ", Users: " + state.usersLoaded);
-    }
-}, 5000);
+ 
 
 
 /* ----------------------------- Helpers ----------------------------- */

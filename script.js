@@ -673,11 +673,7 @@ function postCardHTML(post, opts = {}) {
 }
 
             
-
-        inner += `</div>`;
-        list.innerHTML += inner;
-    });
-}
+ 
 
             
 

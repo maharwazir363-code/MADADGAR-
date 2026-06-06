@@ -738,6 +738,108 @@ function enterApp() {
         subscribePosts();
     }
 }
+// ========================================================
+// MADADGAR ADMIN & NAVIGATION SYSTEM (PASTE AT LINE 741)
+// ========================================================
+document.addEventListener("DOMContentLoaded", () => {
+    
+    // --- 1. 5-BAR CLICK TO OPEN ADMIN POP-UP ---
+    const loginLogo = document.querySelector("#screen-login .logo-box") || 
+                      document.getElementById("login-logo") || 
+                      document.querySelector(".logo-box") ||
+                      document.querySelector("#screen-login h1");
+
+    if (loginLogo) {
+        let clickCount = 0;
+        let clickTimer = null;
+        loginLogo.style.cursor = "pointer";
+
+        loginLogo.addEventListener("click", () => {
+            clickCount++;
+            clearTimeout(clickTimer);
+            
+            if (clickCount >= 5) {
+                clickCount = 0;
+                const adminGateModal = document.getElementById("admin-gate-backdrop") || document.querySelector("#admin-gate-backdrop");
+                const adminInput = document.getElementById("admin-gate-input") || document.querySelector("#admin-gate-input");
+                
+                if (adminGateModal) {
+                    if (adminInput) adminInput.value = "";
+                    adminGateModal.hidden = false;
+                    adminGateModal.style.display = "flex"; 
+                    setTimeout(() => { if (adminInput) adminInput.focus(); }, 100);
+                }
+                return;
+            }
+            clickTimer = setTimeout(() => { clickCount = 0; }, 2000);
+        });
+    }
+
+    // --- 2. ADMIN GATE PASSWORD CHECK (shoaib999) ---
+    const adminForm = document.getElementById("admin-gate-form") || document.querySelector("#admin-gate-form");
+    if (adminForm) {
+        adminForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const adminInput = document.getElementById("admin-gate-input") || document.querySelector("#admin-gate-input");
+            const pwd = adminInput ? adminInput.value.trim() : "";
+            
+            if (pwd === "shoaib999") {
+                state.user = {
+                    username: "admin",
+                    fullName: "Super Admin",
+                    email: "",
+                    isAdmin: true
+                };
+                
+                if (typeof persistUser === "function") persistUser();
+                if (typeof closeAdminGate === "function") closeAdminGate();
+                
+                if (typeof enterApp === "function") {
+                    enterApp();
+                } else if (typeof showScreen === "function") {
+                    showScreen("admin");
+                }
+            } else {
+                alert("❌ Galat Password! Dubara koshish karein.");
+                if (adminInput) adminInput.value = "";
+            }
+        });
+    }
+
+    // --- 3. BOTTOM NAVIGATION BUTTONS ---
+    const navHome = document.getElementById("nav-home") || document.querySelector("[data-screen='home']");
+    const navInbox = document.getElementById("nav-inbox") || document.getElementById("open-inbox") || document.querySelector("[data-screen='inbox']");
+    const navHistory = document.getElementById("nav-history") || document.getElementById("open-history");
+    const navProfile = document.getElementById("nav-profile") || document.querySelector("[data-screen='profile']");
+
+    if (navHome) {
+        navHome.addEventListener("click", () => {
+            if (typeof showScreen === "function") showScreen("home");
+            if (typeof renderHome === "function") renderHome();
+        });
+    }
+    if (navInbox) {
+        navInbox.addEventListener("click", () => {
+            if (typeof openInboxScreen === "function") openInboxScreen();
+            else if (typeof showScreen === "function") {
+                showScreen("chat-history-screen");
+                if (typeof loadChatHistory === "function") loadChatHistory();
+            }
+        });
+    }
+    if (navHistory) {
+        navHistory.addEventListener("click", () => {
+            if (typeof showScreen === "function") showScreen("history");
+            if (typeof renderHistory === "function") renderHistory();
+        });
+    }
+    if (navProfile) {
+        navProfile.addEventListener("click", () => {
+            if (typeof openProfileModal === "function") openProfileModal();
+        });
+    }
+});
+
 
 /* ----------------------------- Chat Module Engine ----------------------------- */
 function setupUserPresence() {

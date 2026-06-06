@@ -498,15 +498,21 @@ function renderAdminUsersTable() {
   state.posts.forEach((p) => {
     if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
   })
-   body.innerHTML = state.users.map(u => {
+    body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     const cleanUsername = escapeHtml(u.username);
     const cleanEmail = escapeHtml(u.email);
     const cleanFullName = escapeHtml(u.fullName || u.name || '');
 
     return `
-      <!-- Yahan renderAdminUser() kar diya hai jo aapki file ka asli function hai -->
-      <div class="user-row" onclick="if(!event.target.classList.contains('user-action-btn')){ state.adminUserView='${cleanUsername}'; if(typeof renderAdminUser==='function')renderAdminUser(); }" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
+      <!-- Onclick ke andar details load karne aur block ko show karne ka pakka ilaj -->
+      <div class="user-row" onclick="if(!event.target.classList.contains('user-action-btn')){ 
+        state.adminUserView='${cleanUsername}'; 
+        if(typeof renderAdminUser==='function') renderAdminUser();
+        if(typeof renderAdmin==='function') renderAdmin();
+        const detailContainer = document.getElementById('admin-user-content') || document.querySelector('#admin-user-content');
+        if(detailContainer) { detailContainer.style.display = 'block'; detailContainer.scrollIntoView({ behavior: 'smooth' }); }
+      }" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
         
         <!-- 1. Name Column -->
         <span style="width: 30%; word-break: break-word; padding-right: 5px;">
@@ -531,6 +537,7 @@ function renderAdminUsersTable() {
       </div>
     `;
 }).join('');
+
 }
 
 function renderReportedPosts() {

@@ -505,55 +505,27 @@ function renderAdminUsersTable() {
     const cleanFullName = escapeHtml(u.fullName || u.name || '');
 
     return `
-      <!-- Row par data attributes laga diye hain taake click perfect kaam kare -->
-      <div class="user-row view-user-trigger" data-username="${cleanUsername}" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
+      <div class="user-row" onclick="if(!event.target.classList.contains('user-action-btn')){ state.adminUserView='${cleanUsername}'; if(typeof renderAdmin==='function')renderAdmin(); }" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
         
-        <!-- 1. Name Column -->
-        <span style="width: 30%; word-break: break-word; padding-right: 5px; pointer-events: none;">
+        <span style="width: 30%; word-break: break-word; padding-right: 5px;">
           <b>${cleanFullName}</b><br><span style="color:#777; font-size:11px;">(@${cleanUsername})</span>
         </span>
         
-        <!-- 2. Email Column -->
-        <span style="width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 5px; pointer-events: none;" title="${cleanEmail}">
+        <span style="width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 5px;" title="${cleanEmail}">
           ${cleanEmail}
         </span>
         
-        <!-- 3. Posts Column -->
-        <span style="width: 12%; text-align: center; pointer-events: none;">
+        <span style="width: 12%; text-align: center;">
           ${pCount}
         </span>
-
-                <!-- 4. Action Column (Delete Button) -->
+        
         <div style="width: 18%; text-align: right;">
           <button class="user-action-btn danger" data-act="delete-user" data-username="${cleanUsername}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; width: 100%;">Delete</button>
         </div>
 
-
       </div>
     `;
 }).join('');
-
-   // Yeh hissa row par click karne se details, posts aur messages ko load karega
-setTimeout(() => {
-
-    document.querySelectorAll('.view-user-trigger').forEach(row => {
-        row.onclick = function(e) {
-            // Agar delete button par click hua hai toh details nahi kholna
-            if (e.target.classList.contains('user-action-btn') || e.target.closest('.user-action-btn')) {
-                return;
-            }
-            const targetUsername = this.getAttribute('data-username');
-            state.adminUserView = targetUsername;
-            if (typeof renderAdmin === 'function') {
-                renderAdmin();
-            }
-        };
-    });
-}, 100);
-
-
-   
-
 }
 
 function renderReportedPosts() {

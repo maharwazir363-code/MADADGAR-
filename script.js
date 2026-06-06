@@ -498,17 +498,20 @@ function renderAdminUsersTable() {
   state.posts.forEach((p) => {
     if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
   });
-
-  body.innerHTML = state.users.map((u) => {
-      return `
+   body.innerHTML = state.users.map(u => {
+    const pCount = postCounts[u.username] || 0;
+    return `
       <div class="user-row" style="padding:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <b>${escapeHtml(u.fullName)}</b> (@${escapeHtml(u.username)})
-          ${u.blocked ? '<span style="color:red;"> [BLOCKED]</span>' : ""}
+        <span style="flex:1;"><b>${escapeHtml(u.fullName)}</b> (@${escapeHtml(u.username)})</span>
+        <span style="flex:1;">${escapeHtml(u.email)}</span>
+        <span style="flex:1; text-align:center;">${pCount}</span>
+        <div style="flex:1; text-align:right;">
+          <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="padding:5px 10px; border-radius:4px; cursor:pointer;">Delete</button>
         </div>
-        <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="background:#dc3545; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;"> Delete</button>
-      </div>`;
-    }).join("");
+      </div>
+    `;
+}).join('');
+
 }
 
 function renderReportedPosts() {

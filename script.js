@@ -498,21 +498,15 @@ function renderAdminUsersTable() {
   state.posts.forEach((p) => {
     if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
   })
-    body.innerHTML = state.users.map(u => {
+     body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     const cleanUsername = escapeHtml(u.username);
     const cleanEmail = escapeHtml(u.email);
     const cleanFullName = escapeHtml(u.fullName || u.name || '');
 
     return `
-      <!-- Onclick ke andar details load karne aur block ko show karne ka pakka ilaj -->
-      <div class="user-row" onclick="if(!event.target.classList.contains('user-action-btn')){ 
-        state.adminUserView='${cleanUsername}'; 
-        if(typeof renderAdminUser==='function') renderAdminUser();
-        if(typeof renderAdmin==='function') renderAdmin();
-        const detailContainer = document.getElementById('admin-user-content') || document.querySelector('#admin-user-content');
-        if(detailContainer) { detailContainer.style.display = 'block'; detailContainer.scrollIntoView({ behavior: 'smooth' }); }
-      }" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
+      <!-- Pure clean click handler bina kisi extra codes ya quotes ke jhanjhat ke -->
+      <div class="user-row" onclick="handleUserRowClick(event, '${cleanUsername}')" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
         
         <!-- 1. Name Column -->
         <span style="width: 30%; word-break: break-word; padding-right: 5px;">
@@ -528,6 +522,43 @@ function renderAdminUsersTable() {
         <span style="width: 12%; text-align: center;">
           ${pCount}
         </span>
+        
+        <!-- 4. Action Column (Delete Button) -->
+        <div style="width: 18%; text-align: right;">
+          <button class="user-action-btn danger" data-act="delete-user" data-username="${cleanUsername}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; width: 100%;">Delete</button>
+        </div>
+
+      </div>
+    `;
+}).join('');
+
+// --- SAHI AUR CLEAN CLICK HANDLER FUNCTION ---
+// Isko humne loop ke bahar nikal diya taake HTML bilkul saaf rahe
+window.handleUserRowClick = function(event, username) {
+    // Agar delete button par click hua hai toh ruk jao
+    if (event.target.classList.contains('user-action-btn') || event.target.closest('.user-action-btn')) {
+        return;
+    }
+    
+    // User view set karo
+    state.adminUserView = username;
+    
+    // Jo bhi function aapki file me mojud hai use run karo
+    if (typeof renderAdminUser === 'function') {
+        renderAdminUser();
+    }
+    if (typeof renderAdmin === 'function') {
+        renderAdmin();
+    }
+    
+    // Box ko dhoond kar display block karo aur screen samne lao
+    const box = document.getElementById('admin-user-content') || document.querySelector('#admin-user-content');
+    if (box) {
+        box.style.display = 'block';
+        box.scrollIntoView({ behavior: 'smooth' });
+    }
+};
+
         
         <!-- 4. Action Column (Delete Button) -->
         <div style="width: 18%; text-align: right;">

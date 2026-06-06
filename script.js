@@ -501,16 +501,32 @@ function renderAdminUsersTable() {
    body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     return `
-      <div class="user-row" style="padding:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center;">
-        <span style="flex:1;"><b>${escapeHtml(u.fullName)}</b> (@${escapeHtml(u.username)})</span>
-        <span style="flex:1;">${escapeHtml(u.email)}</span>
-        <span style="flex:1; text-align:center;">${pCount}</span>
-        <div style="flex:1; text-align:right;">
-          <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="padding:5px 10px; border-radius:4px; cursor:pointer;">Delete</button>
+      <div class="user-row" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px;">
+        
+        <!-- 1. Name Column (Fixed 30% Width) -->
+        <span style="width: 30%; word-break: break-word; padding-right: 5px;">
+          <b>${escapeHtml(u.fullName)}</b><br><span style="color:#777; font-size:11px;">(@${escapeHtml(u.username)})</span>
+        </span>
+        
+        <!-- 2. Email Column (Fixed 40% Width + Auto Cut Feature) -->
+        <span style="width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 5px;" title="${escapeHtml(u.email)}">
+          ${escapeHtml(u.email)}
+        </span>
+        
+        <!-- 3. Posts Column (Fixed 12% Width) -->
+        <span style="width: 12%; text-align: center;">
+          ${pCount}
+        </span>
+        
+        <!-- 4. Action Column (Fixed 18% Width) -->
+        <div style="width: 18%; text-align: right;">
+          <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; width: 100%;">Delete</button>
         </div>
+
       </div>
     `;
 }).join('');
+
 
 }
 

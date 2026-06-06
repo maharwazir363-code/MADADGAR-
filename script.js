@@ -506,7 +506,7 @@ function renderAdminUsersTable() {
           <b>${escapeHtml(u.fullName)}</b> (@${escapeHtml(u.username)})
           ${u.blocked ? '<span style="color:red;"> [BLOCKED]</span>' : ""}
         </div>
-        <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="background:#dc3545; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">ðŸ—‘ Delete</button>
+        <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="background:#dc3545; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;"> Delete</button>
       </div>`;
     }).join("");
 }
@@ -520,7 +520,7 @@ function renderReportedPosts() {
     .sort((a, b) => (b.reportsCount || 0) - (a.reportsCount || 0));
 
   if (reported.length === 0) {
-    container.innerHTML = `<div class="reported-empty muted small" style="padding:10px;">Koi reported post nahi hai. âœ“</div>`;
+    container.innerHTML = `<div class="reported-empty muted small" style="padding:10px;">Koi reported post nahi hai.“</div>`;
     return;
   }
 

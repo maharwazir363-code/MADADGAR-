@@ -739,7 +739,7 @@ function enterApp() {
     }
 }
 // ========================================================
-// MADADGAR ADMIN & NAVIGATION SYSTEM (PASTE AT LINE 741)
+// MADADGAR ADMIN & NAVIGATION SYSTEM (UPDATED)
 // ========================================================
 document.addEventListener("DOMContentLoaded", () => {
     
@@ -775,7 +775,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // --- 2. ADMIN GATE PASSWORD CHECK (shoaib999) ---
+    // --- 2. ADMIN GATE PASSWORD CHECK (HIDES POP-UP) ---
     const adminForm = document.getElementById("admin-gate-form") || document.querySelector("#admin-gate-form");
     if (adminForm) {
         adminForm.addEventListener("submit", (e) => {
@@ -794,6 +794,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (typeof persistUser === "function") persistUser();
                 if (typeof closeAdminGate === "function") closeAdminGate();
                 
+                // Pop-up ko screen se foran hatane ke liye
+                const gateModal = document.getElementById("admin-gate-backdrop") || document.querySelector("#admin-gate-backdrop") || document.getElementById("admin-gate-modal");
+                if (gateModal) {
+                    gateModal.style.display = "none";
+                    gateModal.hidden = true;
+                }
+
                 if (typeof enterApp === "function") {
                     enterApp();
                 } else if (typeof showScreen === "function") {
@@ -839,7 +846,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
-
 
 /* ----------------------------- Chat Module Engine ----------------------------- */
 function setupUserPresence() {

@@ -497,12 +497,12 @@ function renderAdminUsersTable() {
   const postCounts = {};
   state.posts.forEach((p) => {
     if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
-  });
+  })
    body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     return `
-      <!-- Row par click karne se details khulengi, lekin delete button dabaane se user delete hoga -->
-      <div class="user-row" onclick="viewUserDetail('${escapeHtml(u.username)}')" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
+      <!-- Row par click karne se adminUserView set hoga aur details load hongi -->
+      <div class="user-row" onclick="state.adminUserView = '${escapeHtml(u.username)}'; renderAdmin();" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
         
         <!-- 1. Name Column -->
         <span style="width: 30%; word-break: break-word; padding-right: 5px;">
@@ -519,7 +519,7 @@ function renderAdminUsersTable() {
           ${pCount}
         </span>
         
-        <!-- 4. Action Column (StopPropagation lagaya hai taake delete dhabane par details na khulein) -->
+        <!-- 4. Action Column -->
         <div style="width: 18%; text-align: right;" onclick="event.stopPropagation();">
           <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; width: 100%;">Delete</button>
         </div>
@@ -527,6 +527,7 @@ function renderAdminUsersTable() {
       </div>
     `;
 }).join('');
+
    
 
 }

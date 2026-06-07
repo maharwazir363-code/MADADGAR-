@@ -644,7 +644,7 @@ function renderHome() {
   if (filtered.length === 0) {
     list.innerHTML = `
       <div class="empty-block">
-        <div class="big">${state.filter === "find_jobs" ? "ðŸ’¼" : "ðŸ‘¥"}</div>
+        <div class="big">${state.filter === "find_jobs" ? " 💼 : 👥 " }</div>
         <div class="title">${
           state.addressSearch || state.categorySearch
             ? "Kuch nahi mila"

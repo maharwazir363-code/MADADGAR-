@@ -262,6 +262,10 @@ function logout() {
   db.ref("posts").off();
   db.ref("users").off();
   db.ref("stats/successCount").off();
+  // Detach chat listeners
+  _closeChatListeners();
+  if (_inboxListener)      { _inboxListener.off();      _inboxListener = null; }
+  if (_unreadBadgeListener){ _unreadBadgeListener.off(); _unreadBadgeListener = null; }
   state.posts = [];
   state.users = [];
   state.successCount = 0;
@@ -269,6 +273,7 @@ function logout() {
   state.usersLoaded = false;
   state.usersError = null;
   state.viewedThisSession = new Set();
+  state.activeChat = null;
   showScreen("login");
   if ($("#login-username")) $("#login-username").value = "";
   if ($("#login-password")) $("#login-password").value = "";
@@ -1464,7 +1469,7 @@ function enterApp() {
     subscribePosts();
     renderHome();
     updateSuccessBar();
-    loadChatHistory();
+    loadInbox();
     listenForChatNotifications();
   }
 }
@@ -1588,335 +1593,399 @@ function openProfileModal() {
   modal.style.display = "flex";
 }
 
-/* ----------------------------- Chat ----------------------------- */
-let currentChatRoomID = "";
+/* =====================================================================
+   CHAT SYSTEM â€” Real-time Firebase chat with blue ticks & timestamps
+   =====================================================================
+   Firebase data structure:
+     chat_rooms/{roomId}/
+       participants:      { userA: true, userB: true }
+       participantNames:  { userA: "Full Name A", userB: "Full Name B" }
+       lastMessage:       "Hello"
+       lastTimestamp:     SERVER_TIMESTAMP
+       unread:            { userA: 0, userB: 2 }
 
+     chats/{roomId}/{pushId}/
+       senderID:   "userA"
+       text:       "Hello"
+       timestamp:  SERVER_TIMESTAMP
+       seen:       false          â† turns true when receiver opens the chat
+   ===================================================================== */
+
+// â”€â”€ module-level state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+let _chatRoomID         = "";    // currently open room
+let _chatMsgListener    = null;  // Firebase ref (chats/{roomId}) â€” detach on close
+let _presenceListener   = null;  // Firebase ref (users/{id}/status)
+let _inboxListener      = null;  // Firebase ref (chat_rooms) for inbox list
+let _unreadBadgeListener = null; // Firebase ref (chat_rooms) for global badge
+
+/* â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+// Deterministic room ID: always smaller_larger so Aâ†”B and Bâ†”A share same room
+function _roomId(a, b) { return a < b ? a + "_" + b : b + "_" + a; }
+
+// Human-readable timestamp for chat bubbles
+function formatChatTime(ts) {
+  if (!ts) return "";
+  const now      = new Date();
+  const date     = new Date(ts);
+  const diffDays = Math.floor((now - date) / 86400000);
+  if (diffDays === 0) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7)  return date.toLocaleDateString([], { weekday: "short" });
+  return date.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
+/* â”€â”€ open chat window â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function openChatWithUser(receiverID, receiverName, receiverPic) {
-  listenToUserPresence(receiverID);
-  const currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
-  if (currentUserID === receiverID) {
-    alert("Aap apne aap ko message nahi bhej sakte!");
-    return;
-  }
-  currentChatRoomID = currentUserID < receiverID
-    ? currentUserID + "_" + receiverID
-    : receiverID + "_" + currentUserID;
+  if (!state.user || !receiverID) return;
+  const me = state.user.username;
+  if (me === receiverID) { alert("Aap apne aap ko message nahi bhej sakte!"); return; }
 
+  // Close any existing open room first
+  _closeChatListeners();
+
+  _chatRoomID      = _roomId(me, receiverID);
   state.activeChat = receiverID;
 
-  const nameEl = document.getElementById("chat-user-name");
-  const picEl  = document.getElementById("chat-user-pic");
-  if (nameEl) nameEl.innerText = receiverName || "MADADGAR User";
-  if (picEl)  picEl.src = receiverPic || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+  // Header
+  const nameEl   = document.getElementById("chat-user-name");
+  const picEl    = document.getElementById("chat-user-pic");
+  const statusEl = document.getElementById("chat-user-status");
+  if (nameEl)   nameEl.innerText = receiverName || receiverID;
+  if (picEl)    picEl.src = receiverPic || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+  if (statusEl) { statusEl.innerText = ""; statusEl.style.color = "#888"; }
 
-  const chatModal = document.getElementById("chat-modal");
-  if (chatModal) chatModal.style.display = "flex";
+  // Show modal
+  const modal = document.getElementById("chat-modal");
+  if (modal) modal.style.display = "flex";
 
-  firebase.database().ref("chats/" + currentChatRoomID + "/messages").on("value", (snapshot) => {
-    const messagesArea = document.getElementById("chat-messages-area");
-    if (!messagesArea) return;
-    messagesArea.innerHTML = "";
-    if (snapshot.exists()) {
-      snapshot.forEach((childSnapshot) => {
-        const msgData   = childSnapshot.val();
-        const msgBubble = document.createElement("div");
-        if (msgData.senderID === currentUserID) {
-          msgBubble.style.cssText = "align-self:flex-end;background-color:#1E40AF;color:white;padding:10px 15px;border-radius:15px 15px 0px 15px;max-width:75%;word-wrap:break-word;font-size:14px;margin-bottom:5px;";
-        } else {
-          msgBubble.style.cssText = "align-self:flex-start;background-color:white;color:#333;padding:10px 15px;border-radius:15px 15px 15px 0px;max-width:75%;word-wrap:break-word;font-size:14px;margin-bottom:5px;";
-        }
-        msgBubble.innerText = msgData.text;
-        messagesArea.appendChild(msgBubble);
-      });
-      messagesArea.scrollTop = messagesArea.scrollHeight;
-    } else {
-      messagesArea.innerHTML = "<p style='text-align:center;color:#999;font-size:13px;margin-top:20px;'>Abhi tak koi message nahi hai. Chat shuru karein!</p>";
-    }
+  // Clear messages area
+  const area = document.getElementById("chat-messages-area");
+  if (area) area.innerHTML = `<p style="text-align:center;color:#999;font-size:13px;padding:20px;">Messages load ho rahi hain...</p>`;
+
+  // -- child_added: append new messages in real-time without full re-render
+  const msgsRef = db.ref("chats/" + _chatRoomID);
+  _chatMsgListener = msgsRef;
+
+  msgsRef.on("child_added", (snap) => {
+    _appendBubble(snap.key, snap.val(), me);
+    if (area) area.scrollTop = area.scrollHeight;
   });
 
-  firebase.database().ref("chats/" + currentChatRoomID + "/unread/" + currentUserID).set(0);
+  // -- child_changed: update blue tick when our sent message becomes seen
+  msgsRef.on("child_changed", (snap) => {
+    const msg = snap.val();
+    if (!msg || msg.senderID !== me) return;
+    const el = document.getElementById("tick-" + snap.key);
+    if (el && msg.seen) { el.textContent = "âœ“âœ“"; el.style.color = "#60A5FA"; }
+  });
+
+  // -- Mark all incoming messages seen
+  _markSeen(_chatRoomID, me);
+
+  // -- Reset my unread counter
+  db.ref("chat_rooms/" + _chatRoomID + "/unread/" + me).set(0).catch(() => {});
+
+  // -- Presence
+  _listenToPresence(receiverID);
 }
 
-function sendMessage() {
-  const currentUserID       = (state.user && state.user.username) ? state.user.username : "test_user";
-  const currentUserFullName = (state.user && state.user.fullName) ? state.user.fullName : "MADADGAR User";
-  const currentUserPic      = (state.user && state.user.profilePic) ? state.user.profilePic : "";
+// Append one message bubble
+function _appendBubble(key, msg, myID) {
+  const area = document.getElementById("chat-messages-area");
+  if (!area) return;
+  // Remove loading placeholder
+  const ph = area.querySelector("p");
+  if (ph) ph.remove();
 
-  const inputField  = document.getElementById("chat-input-text");
-  const messageText = inputField ? inputField.value.trim() : "";
-  if (!messageText || !currentChatRoomID) return;
+  const isMine  = msg.senderID === myID;
+  const timeStr = formatChatTime(msg.timestamp);
+  const tick    = isMine
+    ? `<span id="tick-${key}" style="font-size:10px;margin-left:4px;color:${msg.seen ? "#60A5FA" : "#aaa"};">${msg.seen ? "âœ“âœ“" : "âœ“"}</span>`
+    : "";
 
-  const ids        = currentChatRoomID.split("_");
-  const receiverID = ids[0] === currentUserID ? ids[1] : ids[0];
+  const w = document.createElement("div");
+  w.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? "flex-end" : "flex-start"};margin-bottom:6px;`;
+  w.innerHTML = `
+    <div style="
+      background:${isMine ? "#1E40AF" : "#ffffff"};
+      color:${isMine ? "#fff" : "#111"};
+      padding:8px 12px;border-radius:${isMine ? "14px 14px 0 14px" : "14px 14px 14px 0"};
+      max-width:75%;word-wrap:break-word;font-size:14px;
+      box-shadow:0 1px 2px rgba(0,0,0,0.1);">${escapeHtml(msg.text || "")}</div>
+    <div style="font-size:10px;color:#999;margin-top:2px;">${timeStr}${tick}</div>`;
+  area.appendChild(w);
+}
 
-  const messageData = {
-    senderID:  currentUserID,
-    text:      messageText,
-    timestamp: firebase.database.ServerValue.TIMESTAMP,
-  };
-
-  firebase.database().ref("chats/" + currentChatRoomID + "/messages").push(messageData).then(() => {
-    if (inputField) inputField.value = "";
-    firebase.database().ref("chat_rooms/" + currentChatRoomID).set({
-      lastMessage: messageText,
-      timestamp: firebase.database.ServerValue.TIMESTAMP,
-      users: { [currentUserID]: true, [receiverID]: true },
-      names: {
-        [currentUserID]: currentUserFullName,
-        [receiverID]: document.getElementById("chat-user-name")?.innerText || "",
-      },
-      pics: {
-        [currentUserID]: currentUserPic,
-        [receiverID]: document.getElementById("chat-user-pic")?.src || "",
-      },
+// Mark all messages from the other person as seen in one batch write
+function _markSeen(roomId, myID) {
+  db.ref("chats/" + roomId).once("value").then((snap) => {
+    if (!snap.exists()) return;
+    const updates = {};
+    snap.forEach((child) => {
+      const m = child.val();
+      if (m && m.senderID !== myID && m.seen === false)
+        updates["chats/" + roomId + "/" + child.key + "/seen"] = true;
     });
-    firebase.database().ref("chats/" + currentChatRoomID + "/unread/" + receiverID).transaction(
-      (c) => (c || 0) + 1
-    );
-  });
+    if (Object.keys(updates).length) db.ref().update(updates).catch(() => {});
+  }).catch(() => {});
 }
 
-// FIX: loadChatHistory defined only once (duplicate at line 1776 removed)
-function loadChatHistory() {
-  const currentUserID    = (state.user && state.user.username) ? state.user.username : "";
-  const inboxContainer   = document.getElementById("inbox-messages-list");
-  if (!inboxContainer) return;
+/* â”€â”€ send a message â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+function sendMessage() {
+  if (!state.user || !_chatRoomID) return;
+  const me     = state.user.username;
+  const myName = state.user.fullName || me;
 
-  inboxContainer.innerHTML = `<p style="text-align:center;color:#888;padding:20px;">Chats load ho rahi hain...</p>`;
+  const inputEl = document.getElementById("chat-input-text");
+  const text    = inputEl ? inputEl.value.trim() : "";
+  if (!text) return;
 
-  db.ref("chats").on("value", (snapshot) => {
-    inboxContainer.innerHTML = "";
-    let hasChats = false;
+  const parts      = _chatRoomID.split("_");
+  const receiverID = parts[0] === me ? parts[1] : parts[0];
 
-    if (snapshot.exists()) {
-      snapshot.forEach((chatRoom) => {
-        const roomID = chatRoom.key;
-        if (!roomID.includes(currentUserID)) return;
+  // Push message node
+  db.ref("chats/" + _chatRoomID).push({
+    senderID:  me,
+    text:      text,
+    timestamp: firebase.database.ServerValue.TIMESTAMP,
+    seen:      false,
+  }).then(() => {
+    if (inputEl) inputEl.value = "";
+  }).catch((err) => console.error("sendMessage:", err));
 
-        hasChats = true;
-        const chatData    = chatRoom.val();
-        const otherUserID = roomID.replace(currentUserID, "").replace("_", "");
+  // Update lightweight index (chat_rooms) for inbox & badge
+  const receiverNameEl = document.getElementById("chat-user-name");
+  const receiverName   = receiverNameEl ? receiverNameEl.innerText : receiverID;
 
-        let lastMessage = "No messages yet";
-        if (chatData.messages) {
-          const msgArray = Object.values(chatData.messages);
-          if (msgArray.length > 0)
-            lastMessage = msgArray[msgArray.length - 1].text || "Attachment/Image";
-        }
+  db.ref("chat_rooms/" + _chatRoomID).update({
+    participants:     { [me]: true, [receiverID]: true },
+    participantNames: { [me]: myName, [receiverID]: receiverName },
+    lastMessage:      text,
+    lastTimestamp:    firebase.database.ServerValue.TIMESTAMP,
+  }).catch(() => {});
 
-        let unreadCount = 0;
-        if (chatData.unread && chatData.unread[currentUserID])
-          unreadCount = chatData.unread[currentUserID];
+  // Increment receiver's unread counter
+  db.ref("chat_rooms/" + _chatRoomID + "/unread/" + receiverID)
+    .transaction((c) => (c || 0) + 1).catch(() => {});
+}
 
-        const badgeHTML = unreadCount > 0
-          ? `<span style="background:#25D366;color:white;border-radius:50%;padding:3px 8px;font-size:11px;font-weight:bold;">${unreadCount}</span>`
-          : "";
+/* â”€â”€ close chat modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+function closeChatModal() {
+  const modal = document.getElementById("chat-modal");
+  if (modal) modal.style.display = "none";
+  _closeChatListeners();
+  state.activeChat = null;
+}
 
-        const nameSpanId = `inbox-name-${otherUserID}`;
-        const chatRow    = document.createElement("div");
-        chatRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-bottom:1px solid #eee;cursor:pointer;transition:background 0.2s;";
-        chatRow.className = "inbox-chat-item";
-        chatRow.onmouseover = () => { chatRow.style.backgroundColor = "#f9f9f9"; };
-        chatRow.onmouseout  = () => { chatRow.style.backgroundColor = "white"; };
-        chatRow.innerHTML = `
-          <div style="display:flex;align-items:center;gap:12px;width:80%;">
-            <div style="width:45px;height:45px;background-color:#075E54;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;flex-shrink:0;">
-              ${otherUserID.charAt(0).toUpperCase()}
-            </div>
-            <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-              <h4 id="${nameSpanId}" style="margin:0 0 4px;font-size:15px;color:#333;font-weight:600;">${escapeHtml(otherUserID)}</h4>
-              <p style="margin:0;font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(lastMessage)}</p>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">${badgeHTML}</div>`;
+function _closeChatListeners() {
+  if (_chatMsgListener)  { _chatMsgListener.off();  _chatMsgListener = null; }
+  if (_presenceListener) { _presenceListener.off(); _presenceListener = null; }
+  _chatRoomID = "";
+}
 
-        chatRow.onclick = () => openChatWithUser(otherUserID, otherUserID, "");
+/* â”€â”€ Inbox (WhatsApp-style chat list) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+function loadInbox() {
+  const container = document.getElementById("inbox-messages-list");
+  if (!container || !state.user) return;
+  const me = state.user.username;
 
-        inboxContainer.appendChild(chatRow);
+  container.innerHTML = `<p style="text-align:center;color:#888;padding:20px;font-size:13px;">Inbox load ho rahi hai...</p>`;
 
-        db.ref("users/" + otherUserID).once("value").then((userSnap) => {
-          if (userSnap.exists() && userSnap.val().fullName) {
-            const nameEl = document.getElementById(nameSpanId);
-            if (nameEl) nameEl.innerText = userSnap.val().fullName;
-          }
-        });
-      });
-    }
+  // Detach old listener
+  if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
 
-    if (!hasChats) {
-      inboxContainer.innerHTML = `
+  // Listen to chat_rooms ordered by last activity
+  const ref = db.ref("chat_rooms").orderByChild("lastTimestamp");
+  _inboxListener = ref;
+
+  ref.on("value", (snap) => {
+    container.innerHTML = "";
+    const rooms = [];
+    snap.forEach((child) => {
+      const r = child.val();
+      if (r && r.participants && r.participants[me]) rooms.push({ id: child.key, ...r });
+    });
+    rooms.reverse(); // latest first
+
+    if (rooms.length === 0) {
+      container.innerHTML = `
         <div style="text-align:center;padding:40px 20px;color:#999;">
-          <span style="font-size:40px;">ðŸ“­</span>
-          <p style="margin-top:10px;font-size:14px;">Abhi tak koi chat maujood nahi hai.</p>
+          <div style="font-size:48px;">ðŸ’¬</div>
+          <p style="margin-top:10px;font-size:14px;">Abhi koi chat nahi hai.<br>Kisi post par "ðŸ’¬ Chat" dabayein!</p>
         </div>`;
+      return;
     }
+
+    rooms.forEach((room) => {
+      const parts     = room.id.split("_");
+      const otherID   = parts[0] === me ? parts[1] : parts[0];
+      const otherName = (room.participantNames && room.participantNames[otherID]) || otherID;
+      const unread    = (room.unread && room.unread[me]) || 0;
+      const lastMsg   = escapeHtml(room.lastMessage || "Chat shuru karein");
+      const lastTime  = formatChatTime(room.lastTimestamp);
+      const initial   = otherName.charAt(0).toUpperCase();
+
+      const badge = unread > 0
+        ? `<span style="background:#25D366;color:white;border-radius:50%;padding:2px 7px;font-size:11px;font-weight:bold;">${unread > 99 ? "99+" : unread}</span>`
+        : "";
+
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background 0.15s;";
+      row.onmouseover = () => { row.style.backgroundColor = "#f5f5f5"; };
+      row.onmouseout  = () => { row.style.backgroundColor = ""; };
+      row.innerHTML = `
+        <div style="width:46px;height:46px;background:#1E40AF;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;flex-shrink:0;">${escapeHtml(initial)}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:600;font-size:15px;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(otherName)}</span>
+            <span style="font-size:11px;color:#999;flex-shrink:0;margin-left:8px;">${lastTime}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+            <span style="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${lastMsg}</span>
+            <div style="flex-shrink:0;margin-left:6px;">${badge}</div>
+          </div>
+        </div>`;
+      row.onclick = () => openChatWithUser(otherID, otherName, "");
+      container.appendChild(row);
+    });
+  }, (err) => {
+    console.error("Inbox error:", err);
+    container.innerHTML = `<p style="color:red;text-align:center;padding:20px;font-size:13px;">Inbox load nahi hui. Internet check karein.</p>`;
   });
 }
 
+/* â”€â”€ Global unread badge (message icon in header) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function listenForChatNotifications() {
-  const currentUserID = (state.user && state.user.username) ? state.user.username : "";
-  if (!currentUserID) return;
+  if (!state.user || state.user.isAdmin) return;
+  const me = state.user.username;
 
-  firebase.database().ref("chats").on("value", (snapshot) => {
-    let totalUnread = 0;
-    if (snapshot.exists()) {
-      snapshot.forEach((room) => {
-        const unreadData = room.child("unread").val();
-        if (unreadData && unreadData[currentUserID])
-          totalUnread += unreadData[currentUserID];
-      });
-    }
+  if (_unreadBadgeListener) { _unreadBadgeListener.off(); _unreadBadgeListener = null; }
+
+  const ref = db.ref("chat_rooms");
+  _unreadBadgeListener = ref;
+
+  ref.on("value", (snap) => {
+    let total = 0;
+    snap.forEach((child) => {
+      const r = child.val();
+      if (r && r.participants && r.participants[me] && r.unread && r.unread[me])
+        total += r.unread[me];
+    });
     const badge = document.getElementById("global-inbox-badge");
     if (badge) {
-      if (totalUnread > 0) {
-        badge.innerText = totalUnread;
-        badge.style.display = "inline-block";
-      } else {
-        badge.style.display = "none";
-      }
+      if (total > 0) { badge.innerText = total > 99 ? "99+" : total; badge.style.display = "inline-block"; }
+      else badge.style.display = "none";
     }
   });
 }
 
-function openInboxScreen() {
-  if (typeof showScreen === "function") showScreen("chat-history-screen");
-  if (typeof loadChatHistory === "function") loadChatHistory();
-}
-
-function goBackToHome() {
-  const historyScreen = document.getElementById("chat-history-screen");
-  const homeScreen    = document.getElementById("screen-home");
-  if (historyScreen) historyScreen.style.display = "none";
-  if (homeScreen)    homeScreen.style.display = "block";
-}
-
-// FIX: loadUserChatsInAdmin defined only once (duplicate removed)
+/* â”€â”€ Admin: full chat log for a specific user â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function loadUserChatsInAdmin(targetUserId) {
-  const messagesContainer = document.getElementById("admin-user-messages-container");
-  if (!messagesContainer) return;
+  const container = document.getElementById("admin-user-messages-container");
+  if (!container) return;
+  container.innerHTML = `<p style="color:#666;font-size:13px;padding:6px 0;">Chat logs scan ho rahe hain...</p>`;
 
-  messagesContainer.innerHTML = `<p style="color:#666;font-size:13px;">Chats scan ho rahi hain...</p>`;
+  // Use the lightweight index first â€” no scanning the full messages tree
+  db.ref("chat_rooms").once("value").then((snap) => {
+    const rooms = [];
+    snap.forEach((child) => {
+      const r = child.val();
+      if (r && r.participants && r.participants[targetUserId])
+        rooms.push({ id: child.key, ...r });
+    });
 
-  firebase.database().ref("chats").once("value").then((snapshot) => {
-    messagesContainer.innerHTML = "";
-    let hasChats = false;
+    if (rooms.length === 0) {
+      container.innerHTML = `<p style="color:#999;font-size:13px;text-align:center;padding:10px;">Is user ne abhi tak kisi se chat nahi ki.</p>`;
+      return;
+    }
 
-    if (snapshot.exists()) {
-      snapshot.forEach((chatRoom) => {
-        const roomId = chatRoom.key;
-        const parts  = roomId.split("_");
-        if (!parts.includes(targetUserId)) return;
+    container.innerHTML = ""; // clear before appending rooms
 
-        hasChats = true;
-        const chatData    = chatRoom.val();
-        const messages    = chatData.messages ? Object.values(chatData.messages) : [];
-        const companionId = parts.find((p) => p !== targetUserId) || "unknown";
+    // Fetch full message history for each room in parallel
+    const fetches = rooms.map((room) =>
+      db.ref("chats/" + room.id).once("value").then((msgSnap) => {
+        const parts      = room.id.split("_");
+        const otherID    = parts[0] === targetUserId ? parts[1] : parts[0];
+        const myName     = (room.participantNames && room.participantNames[targetUserId]) || targetUserId;
+        const otherName  = (room.participantNames && room.participantNames[otherID]) || otherID;
 
+        const messages = [];
+        if (msgSnap.exists()) msgSnap.forEach((m) => messages.push({ key: m.key, ...m.val() }));
         messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-        const chatBox = document.createElement("div");
-        chatBox.style.cssText = "background:#f9f9f9;border:1px solid #ddd;border-radius:6px;padding:10px;margin-bottom:8px;";
+        const box = document.createElement("div");
+        box.style.cssText = "background:#f9f9f9;border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:10px;";
 
-        let chatHTML = `
-          <div style="font-size:13px;font-weight:bold;color:#128C7E;margin-bottom:8px;border-bottom:1px dashed #ccc;padding-bottom:4px;">
-            Chat Room: ${escapeHtml(targetUserId)} â‡† ${escapeHtml(companionId)}
+        let html = `
+          <div style="font-size:13px;font-weight:bold;color:#1E40AF;padding-bottom:6px;border-bottom:1px dashed #ccc;margin-bottom:8px;">
+            ðŸ’¬ ${escapeHtml(myName)} â‡† ${escapeHtml(otherName)}
+            <span style="font-size:11px;color:#999;font-weight:normal;margin-left:6px;">(${messages.length} messages)</span>
           </div>
-          <div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;padding-right:5px;">`;
+          <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">`;
 
-        if (messages.length === 0) {
-          chatHTML += `<p style="color:#aaa;font-size:12px;">No messages in this room.</p>`;
+        if (!messages.length) {
+          html += `<p style="color:#aaa;font-size:12px;margin:0;">Koi message nahi.</p>`;
         } else {
           messages.forEach((msg) => {
-            const isSender   = msg.senderID === targetUserId;
-            const label      = isSender ? escapeHtml(targetUserId) : escapeHtml(companionId);
-            const color      = isSender ? "#075E54" : "#444";
-            const timeStr    = msg.timestamp
-              ? new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-              : "";
-            chatHTML += `
-              <div style="font-size:12px;line-height:1.4;">
+            const isMe    = msg.senderID === targetUserId;
+            const label   = isMe ? escapeHtml(myName) : escapeHtml(otherName);
+            const color   = isMe ? "#1E40AF" : "#444";
+            const time    = formatChatTime(msg.timestamp);
+            const seenStr = isMe ? (msg.seen ? " âœ“âœ“" : " âœ“") : "";
+            html += `
+              <div style="font-size:12px;line-height:1.6;padding:2px 0;border-bottom:1px solid #f0f0f0;">
                 <strong style="color:${color};">${label}:</strong>
                 <span>${escapeHtml(msg.text || "")}</span>
-                <span style="font-size:10px;color:#999;margin-left:5px;">${timeStr}</span>
+                <span style="font-size:10px;color:#aaa;margin-left:6px;">${time}${seenStr}</span>
               </div>`;
           });
         }
+        html += `</div>`;
+        box.innerHTML = html;
+        container.appendChild(box);
+      }).catch(() => {})
+    );
 
-        chatHTML += `</div>`;
-        chatBox.innerHTML = chatHTML;
-        messagesContainer.appendChild(chatBox);
-      });
-    }
-
-    if (!hasChats) {
-      messagesContainer.innerHTML = `<p style="color:#999;font-size:13px;text-align:center;padding:10px;">Is user ne abhi tak kisi se koi chat nahi ki.</p>`;
-    }
-  }).catch((error) => {
-    console.error("Admin chat loading error:", error);
-    messagesContainer.innerHTML = `<p style="color:red;font-size:13px;">Data load karne me masla aaya hai.</p>`;
-  });
-}
-
-/* ----------------------------- Presence ----------------------------- */
-// FIX: setupUserPresence defined only once
-function setupUserPresence() {
-  const currentUserID = (state.user && state.user.username) ? state.user.username : "";
-  if (!currentUserID) return;
-
-  const userStatusRef = firebase.database().ref("/users/" + currentUserID + "/status");
-  firebase.database().ref(".info/connected").on("value", (snapshot) => {
-    if (snapshot.val() === false) return;
-    userStatusRef.onDisconnect().set({
-      state: "offline",
-      last_changed: firebase.database.ServerValue.TIMESTAMP,
-    }).then(() => {
-      userStatusRef.set({
-        state: "online",
-        last_changed: firebase.database.ServerValue.TIMESTAMP,
-      });
+    Promise.all(fetches).then(() => {
+      if (!container.children.length)
+        container.innerHTML = `<p style="color:#999;font-size:13px;text-align:center;">Is user ki koi chat nahi mili.</p>`;
     });
+  }).catch((err) => {
+    console.error("Admin chat load error:", err);
+    container.innerHTML = `<p style="color:red;font-size:13px;">Chat data load fail. Phir koshish karein.</p>`;
   });
 }
 
-function listenToUserPresence(targetUserId) {
-  const statusElement = document.getElementById("chat-user-status");
-  if (!statusElement) return;
+/* â”€â”€ Presence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+function setupUserPresence() {
+  if (!state.user || !state.user.username) return;
+  const me        = state.user.username;
+  const statusRef = db.ref("users/" + me + "/status");
 
-  firebase.database().ref("/users/" + targetUserId + "/status").on("value", (snapshot) => {
-    if (!snapshot.exists()) {
-      statusElement.innerText = "offline";
-      statusElement.style.color = "#888";
-      return;
-    }
-    const status = snapshot.val();
-    if (status.state === "online") {
-      statusElement.innerText = "online";
-      statusElement.style.color = "#25D366";
+  db.ref(".info/connected").on("value", (snap) => {
+    if (!snap.val()) return;
+    statusRef.onDisconnect()
+      .set({ state: "offline", last_changed: firebase.database.ServerValue.TIMESTAMP })
+      .then(() => statusRef.set({ state: "online", last_changed: firebase.database.ServerValue.TIMESTAMP }));
+  });
+}
+
+function _listenToPresence(targetUserId) {
+  const el = document.getElementById("chat-user-status");
+  if (!el) return;
+
+  const ref = db.ref("users/" + targetUserId + "/status");
+  _presenceListener = ref;
+
+  ref.on("value", (snap) => {
+    if (!snap.exists()) { el.innerText = "offline"; el.style.color = "#999"; return; }
+    const s = snap.val();
+    if (s.state === "online") {
+      el.innerText = "online â—"; el.style.color = "#25D366";
     } else {
-      statusElement.style.color = "#888";
-      if (status.last_changed) {
-        const timeString = new Date(status.last_changed).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        statusElement.innerText = "last seen today at " + timeString;
-      } else {
-        statusElement.innerText = "offline";
-      }
+      el.style.color = "#999";
+      el.innerText = s.last_changed ? "last seen " + formatChatTime(s.last_changed) : "offline";
     }
   });
-}
-
-function closeChatModal() {
-  const chatModal = document.getElementById("chat-modal");
-  if (chatModal) chatModal.style.display = "none";
-
-  // FIX: read activeChat BEFORE clearing it
-  const receiverID = state.activeChat;
-  state.activeChat = null;
-
-  if (receiverID) {
-    firebase.database().ref("/users/" + receiverID + "/status").off();
-  }
-  if (currentChatRoomID) {
-    firebase.database().ref("chats/" + currentChatRoomID + "/messages").off();
-    currentChatRoomID = "";
-  }
 }

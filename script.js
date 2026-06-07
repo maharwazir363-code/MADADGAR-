@@ -498,7 +498,7 @@ function renderAdminUsersTable() {
   state.posts.forEach((p) => {
     if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
   })
-     body.innerHTML = state.users.map(u => {
+   body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     const cleanUsername = escapeHtml(u.username);
     const cleanEmail = escapeHtml(u.email);
@@ -531,6 +531,7 @@ function renderAdminUsersTable() {
       </div>
     `;
 }).join('');
+
 
 // --- SAHI AUR CLEAN CLICK HANDLER FUNCTION ---
 // Isko humne loop ke bahar nikal diya taake HTML bilkul saaf rahe

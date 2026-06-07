@@ -482,23 +482,7 @@ function renderAdminStats() {
   if ($("#stat-success"))  $("#stat-success").textContent  = state.successCount;
 }
 
-function renderAdminUsersTable() {
-  const body = $("#users-table-body");
-  if (!body) return;
-  if (!state.usersLoaded) {
-    body.innerHTML = `<div class="spinner"></div>`;
-    return;
-  }
-  if (state.usersError) {
-    body.innerHTML = `<div style="color:red; padding:10px;">Users data fetch nahi ho saka.</div>`;
-    return;
-  }
-
-  const postCounts = {};
-  state.posts.forEach((p) => {
-    if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
-  })
-   body.innerHTML = state.users.map(u => {
+body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     const cleanUsername = escapeHtml(u.username);
     const cleanEmail = escapeHtml(u.email);
@@ -532,74 +516,26 @@ function renderAdminUsersTable() {
     `;
 }).join('');
 
+} // 👈 Yeh bracket renderAdminUsersTable function ko bilkul sahi band karega
 
-// --- SAHI AUR CLEAN CLICK HANDLER FUNCTION ---
-// Isko humne loop ke bahar nikal diya taake HTML bilkul saaf rahe
+// --- GLOBAL CLICK HANDLER FUNCTION ---
 window.handleUserRowClick = function(event, username) {
-    // Agar delete button par click hua hai toh ruk jao
     if (event.target.classList.contains('user-action-btn') || event.target.closest('.user-action-btn')) {
         return;
     }
     
-    // User view set karo
     state.adminUserView = username;
     
-    // Jo bhi function aapki file me mojud hai use run karo
     if (typeof renderAdminUser === 'function') {
         renderAdminUser();
     }
-    if (typeof renderAdmin === 'function') {
-        renderAdmin();
-    }
     
-    // Box ko dhoond kar display block karo aur screen samne lao
     const box = document.getElementById('admin-user-content') || document.querySelector('#admin-user-content');
     if (box) {
         box.style.display = 'block';
         box.scrollIntoView({ behavior: 'smooth' });
     }
 };
-
-        
-        <!-- 4. Action Column (Delete Button) -->
-        <div style="width: 18%; text-align: right;">
-          <button class="user-action-btn danger" data-act="delete-user" data-username="${cleanUsername}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; width: 100%;">Delete</button>
-        </div>
-
-      </div>
-    `;
-}).join('');
-
-}
-
-function renderReportedPosts() {
-  const container = $("#reported-posts-list");
-  if (!container) return;
-
-  const reported = state.posts
-    .filter((p) => (p.reportsCount || 0) >= 1)
-    .sort((a, b) => (b.reportsCount || 0) - (a.reportsCount || 0));
-
-  if (reported.length === 0) {
-    container.innerHTML = `<div class="reported-empty muted small" style="padding:10px;">Koi reported post nahi hai.“</div>`;
-    return;
-  }
-
-  container.innerHTML = reported.map((p) => {
-      const title = escapeHtml(p.category || (p.type === "job_seeker" ? "Worker Profile" : "Job Post"));
-      return `
-      <div class="reported-post-item" style="padding:10px; border-bottom:1px solid #ddd; display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <div><b>${title}</b></div>
-          <div style="size:12px; color:#777;">@${escapeHtml(p.username || "unknown")}</div>
-        </div>
-        <div>
-          <span style="color:orange; margin-right:8px;">âš ï¸ ${p.reportsCount}</span>
-          <button class="user-action-btn danger" data-act="delete-reported" data-id="${escapeHtml(p.id)}" style="background:#dc3545; color:white; border:none; padding:4px 8px; border-radius:4px;">ðŸ—‘ Delete</button>
-        </div>
-      </div>`;
-    }).join("");
-}
 
 function renderAdminUser() {
     if (!state.adminUserView) return;

@@ -1784,6 +1784,16 @@ function _closeChatListeners() {
   _chatRoomID = "";
 }
 
+/* â”€â”€ Inbox navigation (called via onclick="" in HTML) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+function openInboxScreen() {
+  showScreen("chat-history-screen");
+  loadInbox();
+}
+
+function goBackToHome() {
+  showScreen("home");
+}
+
 /* â”€â”€ Inbox (WhatsApp-style chat list) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function loadInbox() {
   const container = document.getElementById("inbox-messages-list");

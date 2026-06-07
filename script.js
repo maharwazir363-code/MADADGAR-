@@ -1469,7 +1469,6 @@ function enterApp() {
     subscribePosts();
     renderHome();
     updateSuccessBar();
-    loadInbox();
     listenForChatNotifications();
   }
 }
@@ -1784,45 +1783,106 @@ function _closeChatListeners() {
   _chatRoomID = "";
 }
 
-/* â”€â”€ Inbox navigation (called via onclick="" in HTML) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* â”€â”€ Inbox overlay â€” fully self-contained, no HTML screen dependency â”€â”€ */
+// Creates its own fixed overlay injected into <body> so it works regardless
+// of how the HTML is structured.
+
+function _getOrCreateInboxOverlay() {
+  let overlay = document.getElementById("_madadgar-inbox-overlay");
+  if (overlay) return overlay;
+
+  overlay = document.createElement("div");
+  overlay.id = "_madadgar-inbox-overlay";
+  overlay.style.cssText = [
+    "position:fixed", "inset:0", "z-index:9000",
+    "background:#f0f4f8", "display:none",
+    "flex-direction:column", "overflow:hidden",
+    "font-family:inherit",
+  ].join(";");
+
+  overlay.innerHTML = `
+    <!-- Header -->
+    <div style="background:#1E40AF;color:white;display:flex;align-items:center;
+                gap:10px;padding:0 12px;height:56px;flex-shrink:0;
+                box-shadow:0 2px 4px rgba(0,0,0,0.2);">
+      <button id="_inbox-back-btn"
+        style="background:none;border:none;color:white;font-size:24px;
+               cursor:pointer;padding:4px 8px 4px 0;line-height:1;flex-shrink:0;"
+        aria-label="Back">&#8592;</button>
+      <span style="font-size:18px;font-weight:700;flex:1;">Messages</span>
+    </div>
+
+    <!-- Conversation list -->
+    <div id="_inbox-list"
+      style="flex:1;overflow-y:auto;background:white;"></div>`;
+
+  document.body.appendChild(overlay);
+
+  // Back button
+  overlay.querySelector("#_inbox-back-btn").addEventListener("click", closeInboxScreen);
+
+  return overlay;
+}
+
 function openInboxScreen() {
-  showScreen("chat-history-screen");
-  loadInbox();
+  if (!state.user) return;
+
+  const overlay = _getOrCreateInboxOverlay();
+  overlay.style.display = "flex";
+
+  _renderInboxList();
 }
 
-function goBackToHome() {
-  showScreen("home");
+function closeInboxScreen() {
+  const overlay = document.getElementById("_madadgar-inbox-overlay");
+  if (overlay) overlay.style.display = "none";
+
+  // Detach real-time listener when inbox is hidden to save bandwidth
+  if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
 }
 
-/* â”€â”€ Inbox (WhatsApp-style chat list) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-function loadInbox() {
-  const container = document.getElementById("inbox-messages-list");
-  if (!container || !state.user) return;
+// Alias â€” HTML back buttons may call either name
+function goBackToHome() { closeInboxScreen(); }
+
+// loadInbox() kept as a no-op so existing enterApp() references don't crash
+function loadInbox() { /* inbox is now opened on-demand via openInboxScreen() */ }
+
+function _renderInboxList() {
+  const list = document.getElementById("_inbox-list");
+  if (!list || !state.user) return;
   const me = state.user.username;
 
-  container.innerHTML = `<p style="text-align:center;color:#888;padding:20px;font-size:13px;">Inbox load ho rahi hai...</p>`;
+  list.innerHTML = `
+    <div style="text-align:center;padding:30px;color:#888;font-size:13px;">
+      Messages load ho rahi hain...
+    </div>`;
 
-  // Detach old listener
+  // Detach old listener before attaching a new one
   if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
 
-  // Listen to chat_rooms ordered by last activity
   const ref = db.ref("chat_rooms").orderByChild("lastTimestamp");
   _inboxListener = ref;
 
   ref.on("value", (snap) => {
-    container.innerHTML = "";
+    // Collect rooms where I'm a participant
     const rooms = [];
     snap.forEach((child) => {
       const r = child.val();
-      if (r && r.participants && r.participants[me]) rooms.push({ id: child.key, ...r });
+      if (r && r.participants && r.participants[me])
+        rooms.push({ id: child.key, ...r });
     });
-    rooms.reverse(); // latest first
+    rooms.reverse(); // newest first
+
+    list.innerHTML = "";
 
     if (rooms.length === 0) {
-      container.innerHTML = `
-        <div style="text-align:center;padding:40px 20px;color:#999;">
-          <div style="font-size:48px;">ðŸ’¬</div>
-          <p style="margin-top:10px;font-size:14px;">Abhi koi chat nahi hai.<br>Kisi post par "ðŸ’¬ Chat" dabayein!</p>
+      list.innerHTML = `
+        <div style="text-align:center;padding:60px 24px;color:#aaa;">
+          <div style="font-size:56px;margin-bottom:12px;">ðŸ’¬</div>
+          <p style="font-size:15px;margin:0;line-height:1.6;">
+            Abhi koi chat nahi hai.<br>
+            Kisi post par <strong>ðŸ’¬ Chat</strong> button dabayein!
+          </p>
         </div>`;
       return;
     }
@@ -1832,36 +1892,102 @@ function loadInbox() {
       const otherID   = parts[0] === me ? parts[1] : parts[0];
       const otherName = (room.participantNames && room.participantNames[otherID]) || otherID;
       const unread    = (room.unread && room.unread[me]) || 0;
-      const lastMsg   = escapeHtml(room.lastMessage || "Chat shuru karein");
+      const lastMsg   = room.lastMessage || "Chat shuru karein";
       const lastTime  = formatChatTime(room.lastTimestamp);
       const initial   = otherName.charAt(0).toUpperCase();
 
-      const badge = unread > 0
-        ? `<span style="background:#25D366;color:white;border-radius:50%;padding:2px 7px;font-size:11px;font-weight:bold;">${unread > 99 ? "99+" : unread}</span>`
+      // Build row
+      const row = document.createElement("div");
+      row.style.cssText = [
+        "display:flex", "align-items:center", "gap:12px",
+        "padding:13px 16px", "border-bottom:1px solid #f0f0f0",
+        "cursor:pointer", "transition:background 0.15s", "background:white",
+      ].join(";");
+      row.addEventListener("mouseenter", () => { row.style.background = "#f7f9ff"; });
+      row.addEventListener("mouseleave", () => { row.style.background = "white"; });
+
+      // Avatar placeholder (replaced by real pic below if available)
+      const avatarId  = "_av-" + room.id;
+      const statusId  = "_st-" + room.id;
+      const unreadBadge = unread > 0
+        ? `<span style="background:#25D366;color:white;border-radius:12px;
+                        padding:2px 7px;font-size:11px;font-weight:bold;
+                        min-width:20px;text-align:center;flex-shrink:0;">
+             ${unread > 99 ? "99+" : unread}
+           </span>`
         : "";
 
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background 0.15s;";
-      row.onmouseover = () => { row.style.backgroundColor = "#f5f5f5"; };
-      row.onmouseout  = () => { row.style.backgroundColor = ""; };
       row.innerHTML = `
-        <div style="width:46px;height:46px;background:#1E40AF;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px;flex-shrink:0;">${escapeHtml(initial)}</div>
+        <div id="${avatarId}" style="width:48px;height:48px;background:#1E40AF;color:white;
+             border-radius:50%;display:flex;align-items:center;justify-content:center;
+             font-weight:700;font-size:19px;flex-shrink:0;overflow:hidden;">
+          ${escapeHtml(initial)}
+        </div>
         <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:600;font-size:15px;color:#111;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(otherName)}</span>
-            <span style="font-size:11px;color:#999;flex-shrink:0;margin-left:8px;">${lastTime}</span>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+            <span style="font-weight:700;font-size:15px;color:#111;
+                         overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              ${escapeHtml(otherName)}
+            </span>
+            <span style="font-size:11px;color:#aaa;flex-shrink:0;">${lastTime}</span>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
-            <span style="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${lastMsg}</span>
-            <div style="flex-shrink:0;margin-left:6px;">${badge}</div>
+          <div id="${statusId}"
+            style="font-size:11px;color:#aaa;margin-top:1px;height:14px;line-height:14px;">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;gap:6px;">
+            <span style="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;
+                         white-space:nowrap;flex:1;">${escapeHtml(lastMsg)}</span>
+            ${unreadBadge}
           </div>
         </div>`;
-      row.onclick = () => openChatWithUser(otherID, otherName, "");
-      container.appendChild(row);
+
+      // Open chat on click â€” close inbox first
+      row.addEventListener("click", () => {
+        closeInboxScreen();
+        openChatWithUser(otherID, otherName, "");
+      });
+
+      list.appendChild(row);
+
+      // Async: fetch profile pic + last-seen status for this contact
+      db.ref("users/" + otherID).once("value").then((uSnap) => {
+        if (!uSnap.exists()) return;
+        const u = uSnap.val();
+
+        // Profile picture
+        if (u.profilePic) {
+          const av = document.getElementById(avatarId);
+          if (av) {
+            av.innerHTML = "";
+            const img = document.createElement("img");
+            img.src   = u.profilePic;
+            img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%;";
+            img.onerror = () => { av.innerHTML = escapeHtml(initial); };
+            av.appendChild(img);
+          }
+        }
+
+        // Last seen / online status
+        const stEl = document.getElementById(statusId);
+        if (stEl && u.status) {
+          const s = u.status;
+          if (s.state === "online") {
+            stEl.textContent   = "online â—";
+            stEl.style.color   = "#25D366";
+          } else if (s.last_changed) {
+            stEl.textContent = "last seen " + formatChatTime(s.last_changed);
+            stEl.style.color = "#aaa";
+          }
+        }
+      }).catch(() => {});
     });
+
   }, (err) => {
-    console.error("Inbox error:", err);
-    container.innerHTML = `<p style="color:red;text-align:center;padding:20px;font-size:13px;">Inbox load nahi hui. Internet check karein.</p>`;
+    console.error("Inbox load error:", err);
+    list.innerHTML = `
+      <p style="color:red;text-align:center;padding:24px;font-size:13px;">
+        Inbox load nahi hui. Internet check karein.
+      </p>`;
   });
 }
 

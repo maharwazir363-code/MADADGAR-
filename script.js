@@ -464,59 +464,76 @@ function renderHistory() {
         <div class="title">Aap ne abhi koi post nahi ki</div>
         <p>Home par jaa kar "+" button dabayein</p>
       </div>`;
+     function renderAdminStats() {
+  const total = state.users.length;
+  const verified = state.users.filter(u => u.emailVerified === true).length;
+  const pending = total - verified;
+
+  if ($("#total-signup")) $("#total-signup").textContent = total;
+  if ($("#total-verified")) $("#total-verified").textContent = verified;
+  if ($("#total-pending")) $("#total-pending").textContent = pending;
+  if ($("#total-posts")) $("#total-posts").textContent = state.posts.length;
+  if ($("#stat-success")) $("#stat-success").textContent = state.successCount;
+}
+
+function renderAdminUsersTable() {
+  const body = $("#users-table-body");
+  if (!body) return;
+
+  if (!state.usersLoaded) {
+    body.innerHTML = `
+      <div class="loading-block">
+        <div class="spinner"></div>
+        <p class="muted small">Users load ho rahe hain...</p>
+      </div>
+    `;
     return;
   }
-  list.innerHTML = mine.map((p) => postCardHTML(p, { myMode: true })).join("");
-}
 
-function renderAdminStats() {
-  const total    = state.users.length;
-  const verified = state.users.filter((u) => u.emailVerified === true).length;
-  const pending  = total - verified;
+  if (state.usersError) {
+    body.innerHTML = '<div style="color:red; padding:10px;">Users data fetch nahi ho saka.</div>';
+    return;
+  }
 
-  if ($("#stat-signups"))  $("#stat-signups").textContent  = total;
-  if ($("#stat-verified")) $("#stat-verified").textContent = verified;
-  if ($("#stat-pending"))  $("#stat-pending").textContent  = pending;
-  if ($("#stat-users"))    $("#stat-users").textContent    = total;
-  if ($("#stat-posts"))    $("#stat-posts").textContent    = state.posts.length;
-  if ($("#stat-success"))  $("#stat-success").textContent  = state.successCount;
-}
+  if (state.users.length === 0) {
+    body.innerHTML = '<div class="empty-block"><div class="big">👤</div><div class="title">Abhi koi user register nahi hai</div></div>';
+    return;
+  }
 
-body.innerHTML = state.users.map(u => {
+  const postCounts = {};
+  state.posts.forEach(p => {
+    if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
+  });
+
+  body.innerHTML = state.users.map(u => {
     const pCount = postCounts[u.username] || 0;
     const cleanUsername = escapeHtml(u.username);
     const cleanEmail = escapeHtml(u.email);
     const cleanFullName = escapeHtml(u.fullName || u.name || '');
 
     return `
-      <!-- Pure clean click handler bina kisi extra codes ya quotes ke jhanjhat ke -->
       <div class="user-row" onclick="handleUserRowClick(event, '${cleanUsername}')" style="padding: 10px 5px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between; font-size: 13px; cursor: pointer;">
         
-        <!-- 1. Name Column -->
         <span style="width: 30%; word-break: break-word; padding-right: 5px;">
           <b>${cleanFullName}</b><br><span style="color:#777; font-size:11px;">(@${cleanUsername})</span>
         </span>
         
-        <!-- 2. Email Column -->
         <span style="width: 40%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 5px;" title="${cleanEmail}">
           ${cleanEmail}
         </span>
         
-        <!-- 3. Posts Column -->
         <span style="width: 12%; text-align: center;">
           ${pCount}
         </span>
         
-        <!-- 4. Action Column (Delete Button) -->
         <div style="width: 18%; text-align: right;">
           <button class="user-action-btn danger" data-act="delete-user" data-username="${cleanUsername}" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; cursor: pointer; width: 100%;">Delete</button>
         </div>
 
       </div>
     `;
-}).join('');
-
-} // 👈 Yeh bracket renderAdminUsersTable function ko bilkul sahi band karega
+  }).join('');
+}
 
 // --- GLOBAL CLICK HANDLER FUNCTION ---
 window.handleUserRowClick = function(event, username) {
@@ -536,6 +553,8 @@ window.handleUserRowClick = function(event, username) {
         box.scrollIntoView({ behavior: 'smooth' });
     }
 };
+
+ 
 
 function renderAdminUser() {
     if (!state.adminUserView) return;

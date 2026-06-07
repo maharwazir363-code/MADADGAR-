@@ -1,5 +1,5 @@
 /* ============================================================
-   MADADGAR Ã¢â‚¬â€ Pure vanilla JS app (Firebase RTDB via compat SDK)
+   MADADGAR — Pure vanilla JS app (Firebase RTDB via compat SDK)
    ============================================================ */
 
 const firebaseConfig = {
@@ -176,7 +176,7 @@ async function handleLogin(e) {
       isAdmin: false,
     };
     persistUser();
-    // FIX: setupUserPresence() removed here Ã¢â‚¬â€ enterApp() calls it already
+    // FIX: setupUserPresence() removed here — enterApp() calls it already
     enterApp();
   } catch (err) {
     console.error("Login error:", err.code, err.message);
@@ -532,34 +532,34 @@ async function toggleBlockUser(username, currentlyBlocked) {
 function postCardHTML(post, opts = {}) {
   const isWorker = post.type === "job_seeker";
   const tagClass = isWorker ? "worker" : "employer";
-  const tagText  = isWorker ? "Ã°Å¸â€˜Â¤ Worker Profile" : "Ã°Å¸â€™Â¼ Job Post";
+  const tagText  = isWorker ? "👤 Worker Profile" : "💼 Job Post";
   const ownerName = post.ownerName || "";
 
   let inner = `<div class="post-card">
     <div class="post-tags">
       <span class="tag ${tagClass}">${tagText}</span>
-      ${post.verified ? '<span class="tag worker">Ã¢Å“â€œ Verified</span>' : ""}
+      ${post.verified ? '<span class="tag worker">✓ Verified</span>' : ""}
     </div>`;
 
   if (post.done) {
-    inner += `<div class="done-badge">Ã¢Å“â€œ ALHAMDULILLAH! KAAM HO GAYA</div>`;
+    inner += `<div class="done-badge">✓ ALHAMDULILLAH! KAAM HO GAYA</div>`;
   }
 
   if (post.category) {
-    inner += `<div class="post-row bold"><span class="ic">Ã°Å¸â€º Ã¯Â¸Â</span><span>${escapeHtml(post.category)}</span></div>`;
+    inner += `<div class="post-row bold"><span class="ic">🛠️</span><span>${escapeHtml(post.category)}</span></div>`;
   }
 
   if (post.salary) {
-    inner += `<div class="post-row"><span class="ic">Ã°Å¸â€™Â°</span><span>${escapeHtml(post.salary)}</span></div>`;
+    inner += `<div class="post-row"><span class="ic">💰</span><span>${escapeHtml(post.salary)}</span></div>`;
   }
 
-  inner += `<div class="post-row"><span class="ic">Ã°Å¸â€œÂ</span><span>${escapeHtml(post.address || "")}</span></div>`;
+  inner += `<div class="post-row"><span class="ic">📍</span><span>${escapeHtml(post.address || "")}</span></div>`;
 
   if (ownerName) {
-    inner += `<div class="post-row"><span class="ic">Ã°Å¸â€˜Â¤</span><span>${escapeHtml(ownerName)}</span></div>`;
+    inner += `<div class="post-row"><span class="ic">👤</span><span>${escapeHtml(ownerName)}</span></div>`;
   }
 
-  inner += `<div class="post-meta">${timeAgo(post.createdAt)} Ã¢â‚¬Â¢ ${post.viewCount || 0} views</div>`;
+  inner += `<div class="post-meta">${timeAgo(post.createdAt)} • ${post.viewCount || 0} views</div>`;
 
   const isOwner = state.user && post.username === state.user.username;
 
@@ -576,14 +576,14 @@ function postCardHTML(post, opts = {}) {
   } else if (isOwner) {
     const doneBtn = post.done
       ? ""
-      : `<button class="action-btn done" data-act="mark-done" data-id="${post.id}">Ã¢Å“â€œ Mark as Done</button>`;
+      : `<button class="action-btn done" data-act="mark-done" data-id="${post.id}">✓ Mark as Done</button>`;
     const deleteBtn = opts.myMode
       ? `<button class="action-btn delete" data-act="delete-mine" data-id="${post.id}">Delete</button>`
       : "";
     inner += `
       <div class="post-actions">
         ${doneBtn}
-        <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}">Ã°Å¸â€œÅ¾ Call</button>
+        <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}">📞 Call</button>
         ${deleteBtn}
       </div>`;
   } else {
@@ -597,15 +597,15 @@ function postCardHTML(post, opts = {}) {
 
       const reportBtn = alreadyReported
         ? `<button class="action-btn report" disabled style="opacity:.5;cursor:default">Reported</button>`
-        : `<button class="action-btn report" data-act="report-post" data-id="${post.id}">Ã¢Å¡ Ã¯Â¸Â Report</button>`;
+        : `<button class="action-btn report" data-act="report-post" data-id="${post.id}">⚠️ Report</button>`;
 
       inner += `
         <div class="post-actions" style="display:flex;flex-direction:column;gap:5px;">
           <button type="button" class="action-btn"
             onclick="openChatWithUser('${escapeHtml(post.username || 'test_user')}','${escapeHtml(post.ownerName || 'User')}','')"
-            style="background-color:#007bff;color:white;">Ã°Å¸â€™Â¬ Chat</button>
+            style="background-color:#007bff;color:white;">💬 Chat</button>
           <div style="display:flex;gap:5px;width:100%;">
-            <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}" style="flex:1;">Ã°Å¸â€œÅ¾ Call</button>
+            <button class="action-btn call" data-act="call" data-mobile="${escapeHtml(post.mobileNumber || '')}" style="flex:1;">📞 Call</button>
             <div style="flex:1;">${reportBtn}</div>
           </div>
         </div>`;
@@ -616,7 +616,7 @@ function postCardHTML(post, opts = {}) {
   return inner;  // FIX: always return the built string
 }
 
-// FIX: `list` variable was never declared Ã¢â‚¬â€ added the querySelector
+// FIX: `list` variable was never declared — added the querySelector
 function renderHome() {
   const list = $("#posts-list") || $("#home-posts-list");
   if (!list) return;
@@ -644,7 +644,7 @@ function renderHome() {
   if (filtered.length === 0) {
     list.innerHTML = `
       <div class="empty-block">
-        <div class="big">${state.filter === "find_jobs" ? "Ã°Å¸â€™Â¼" : "Ã°Å¸â€˜Â¥"}</div>
+        <div class="big">${state.filter === "find_jobs" ? "💼" : "👥"}</div>
         <div class="title">${
           state.addressSearch || state.categorySearch
             ? "Kuch nahi mila"
@@ -674,7 +674,7 @@ function renderHistory() {
   if (mine.length === 0) {
     list.innerHTML = `
       <div class="empty-block">
-        <div class="big">Ã°Å¸â€œÂ­</div>
+        <div class="big">📭</div>
         <div class="title">Aap ne abhi koi post nahi ki</div>
         <p>Home pe wapas jaa kar "+" button dabayein</p>
       </div>`;
@@ -728,7 +728,7 @@ function handleShareApp() {
     navigator.share({ title: "MADADGAR", text: shareText, url: appUrl }).catch(() => {});
   } else {
     navigator.clipboard.writeText(shareText)
-      .then(() => showToast("Ã¢Å“â€œ Link copy ho gaya!", "success"))
+      .then(() => showToast("✓ Link copy ho gaya!", "success"))
       .catch(() => {
         const ta = document.createElement("textarea");
         ta.value = shareText;
@@ -737,7 +737,7 @@ function handleShareApp() {
         ta.select();
         document.execCommand("copy");
         ta.remove();
-        showToast("Ã¢Å“â€œ Link copy ho gaya!", "success");
+        showToast("✓ Link copy ho gaya!", "success");
       });
   }
 }
@@ -798,7 +798,7 @@ async function submitReport() {
         localStorage.setItem(key, JSON.stringify(list));
       }
     } catch {}
-    showToast("Ã¢Å¡ Ã¯Â¸Â Post report ho gaya. Admin review karega.", "info", 3500);
+    showToast("⚠️ Post report ho gaya. Admin review karega.", "info", 3500);
   } catch (err) {
     console.error("Report failed:", err);
     showToast("Report fail hua. Phir koshish karein.", "info");
@@ -814,7 +814,7 @@ function renderReportedPosts() {
     .sort((a, b) => (b.reportsCount || 0) - (a.reportsCount || 0));
 
   if (reported.length === 0) {
-    container.innerHTML = `<div class="reported-empty muted small">Koi reported post nahi hai. Ã¢Å“â€œ</div>`;
+    container.innerHTML = `<div class="reported-empty muted small">Koi reported post nahi hai. ✓</div>`;
     return;
   }
 
@@ -826,15 +826,15 @@ function renderReportedPosts() {
       const meta = [p.address, p.username ? "@" + p.username : ""]
         .filter(Boolean)
         .map(escapeHtml)
-        .join(" Ã¢â‚¬Â¢ ");
+        .join(" • ");
       return `
       <div class="reported-post-item">
         <div class="reported-post-info">
           <div class="reported-post-title">${title}</div>
           <div class="reported-post-meta">${meta}</div>
         </div>
-        <div class="report-count-tag">Ã¢Å¡ Ã¯Â¸Â ${p.reportsCount}</div>
-        <button class="user-action-btn danger" data-act="delete-reported" data-id="${escapeHtml(p.id)}">Ã°Å¸â€”â€˜ Delete</button>
+        <div class="report-count-tag">⚠️ ${p.reportsCount}</div>
+        <button class="user-action-btn danger" data-act="delete-reported" data-id="${escapeHtml(p.id)}">🗑 Delete</button>
       </div>`;
     })
     .join("");
@@ -862,17 +862,17 @@ function renderAdminUsersTable() {
   if (state.usersError) {
     body.innerHTML = `
       <div class="empty-block">
-        <div class="big">Ã¢Å¡ Ã¯Â¸Â</div>
+        <div class="big">⚠️</div>
         <div class="title">Users load nahi hue</div>
         <div class="muted small" style="margin-top:6px;word-break:break-all">${escapeHtml(state.usersError)}</div>
-        <button class="btn btn-outline" style="margin-top:12px" onclick="retryLoadUsers()">Ã¢â€ Âº Phir Koshish Karein</button>
+        <button class="btn btn-outline" style="margin-top:12px" onclick="retryLoadUsers()">↺ Phir Koshish Karein</button>
       </div>`;
     return;
   }
   if (state.users.length === 0) {
     body.innerHTML = `
       <div class="empty-block">
-        <div class="big">Ã°Å¸â€˜Â¥</div>
+        <div class="big">👥</div>
         <div class="title">Abhi koi user register nahi hai</div>
       </div>`;
     return;
@@ -894,17 +894,17 @@ function renderAdminUsersTable() {
         <div class="user-name-col">
           <div class="user-name">${escapeHtml(u.fullName)}</div>
           <div class="user-handle">@${escapeHtml(u.username)}</div>
-          ${u.blocked ? '<span class="blocked-tag">Ã°Å¸Å¡Â« BLOCKED</span>' : ""}
+          ${u.blocked ? '<span class="blocked-tag">🚫 BLOCKED</span>' : ""}
           ${
             u.emailVerified === true
-              ? '<span class="status-badge verified">Ã¢Å“â€œ Verified</span>'
-              : '<span class="status-badge pending">Ã¢ÂÂ³ Pending</span>'
+              ? '<span class="status-badge verified">✓ Verified</span>'
+              : '<span class="status-badge pending">⏳ Pending</span>'
           }
         </div>
-        <div class="user-email">${escapeHtml(u.email || "Ã¢â‚¬â€")}</div>
+        <div class="user-email">${escapeHtml(u.email || "—")}</div>
         <div class="user-posts-col"><div class="user-posts-num">${count}</div></div>
         <button class="user-action-btn danger" data-act="delete-user" data-username="${escapeHtml(u.username)}">
-          Ã°Å¸â€”â€˜ Delete
+          🗑 Delete
         </button>
       </div>`;
     })
@@ -923,7 +923,7 @@ function renderAdminUser() {
   if (!u) {
     container.innerHTML = `
       <div class="empty-block">
-        <div class="big">Ã¢Å¡ Ã¯Â¸Â</div>
+        <div class="big">⚠️</div>
         <div class="title">User nahi mila</div>
       </div>`;
     return;
@@ -937,18 +937,18 @@ function renderAdminUser() {
       })
     : "-";
 
-  // Render the full template first Ã¢â‚¬â€ then call loadUserChatsInAdmin
+  // Render the full template first — then call loadUserChatsInAdmin
   container.innerHTML = `
     <div class="profile-card">
       <div class="avatar">${escapeHtml(initial)}</div>
       <div class="profile-info">
         <div class="profile-name">${escapeHtml(u.fullName)}</div>
         <div class="profile-handle">@${escapeHtml(u.username)}</div>
-        <div class="profile-meta"><span class="ic">Ã°Å¸â€œÂ§</span>${u.email ? `<a href="mailto:${escapeHtml(u.email)}">${escapeHtml(u.email)}</a>` : "-"}</div>
-        <div class="profile-meta"><span class="ic">Ã°Å¸â€œâ€¦</span><span class="muted">Joined ${joinedDate}</span></div>
-        <div class="profile-meta"><span class="ic">Ã°Å¸â€œÂ</span><span class="bold" style="color:#007bff;font-weight:bold;">Total Posts: ${userPosts.length}</span></div>
+        <div class="profile-meta"><span class="ic">📧</span>${u.email ? `<a href="mailto:${escapeHtml(u.email)}">${escapeHtml(u.email)}</a>` : "-"}</div>
+        <div class="profile-meta"><span class="ic">📅</span><span class="muted">Joined ${joinedDate}</span></div>
+        <div class="profile-meta"><span class="ic">📝</span><span class="bold" style="color:#007bff;font-weight:bold;">Total Posts: ${userPosts.length}</span></div>
         <div class="status-badge ${u.blocked ? "blocked" : "active"}">
-          ${u.blocked ? "Ã°Å¸Å¡Â« BLOCKED" : "Ã¢Å“â€œ ACTIVE"}
+          ${u.blocked ? "🚫 BLOCKED" : "✓ ACTIVE"}
         </div>
       </div>
     </div>
@@ -957,7 +957,7 @@ function renderAdminUser() {
       <button class="btn btn-outline"
         style="background:#25D366;color:white;border:none;width:100%;padding:12px;font-weight:bold;border-radius:8px;"
         onclick="openChatWithUser('${escapeHtml(u.username)}','${escapeHtml(u.fullName)}','')">
-        Ã°Å¸â€™Â¬ Chat With ${escapeHtml(u.fullName)}
+        💬 Chat With ${escapeHtml(u.fullName)}
       </button>
     </div>
 
@@ -966,13 +966,13 @@ function renderAdminUser() {
         data-act="${u.blocked ? 'unblock-user' : 'block-user'}"
         data-username="${escapeHtml(u.username)}"
         style="background:${u.blocked ? '#28a745' : '#fd7e14'};color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;flex:1;">
-        ${u.blocked ? "Ã¢Å“â€¦ Unblock User" : "Ã°Å¸Å¡Â« Block User"}
+        ${u.blocked ? "✅ Unblock User" : "🚫 Block User"}
       </button>
       <button class="user-action-btn danger"
         data-act="delete-user"
         data-username="${escapeHtml(u.username)}"
         style="background:#dc3545;color:white;border:none;padding:10px 16px;border-radius:6px;cursor:pointer;flex:1;">
-        Ã°Å¸â€”â€˜Ã¯Â¸Â Delete User
+        🗑️ Delete User
       </button>
     </div>
 
@@ -980,7 +980,7 @@ function renderAdminUser() {
     <div class="posts-list">
       ${userPosts.length === 0
         ? `<div class="empty-block">
-             <div class="big">Ã°Å¸â€œÂ­</div>
+             <div class="big">📭</div>
              <div class="title">Is user ne abhi koi post nahi ki</div>
            </div>`
         : userPosts.map((p) => postCardHTML(p, { adminMode: true })).join("")
@@ -989,7 +989,7 @@ function renderAdminUser() {
 
     <div style="margin-top:20px;">
       <div style="font-weight:bold;font-size:15px;margin-bottom:8px;border-bottom:2px solid #eee;padding-bottom:6px;">
-        Ã°Å¸â€™Â¬ Chat Logs
+        💬 Chat Logs
       </div>
       <div id="admin-user-messages-container">
         <p style="color:#666;font-size:13px;">Chats scan ho rahi hain...</p>
@@ -1009,8 +1009,8 @@ function updateBottomHint() {
   }
   const mobileInput = $("#post-mobile-input");
   if (mobileInput && !state.editPostId) mobileInput.value = "";
-  if ($("#menu-name")) $("#menu-name").textContent = state.user?.fullName || "Ã¢â‚¬â€";
-  if ($("#menu-sub")) $("#menu-sub").textContent = state.user ? "@" + state.user.username : "@Ã¢â‚¬â€";
+  if ($("#menu-name")) $("#menu-name").textContent = state.user?.fullName || "—";
+  if ($("#menu-sub")) $("#menu-sub").textContent = state.user ? "@" + state.user.username : "@—";
 }
 
 /* ----------------------------- Events ----------------------------- */
@@ -1567,7 +1567,7 @@ if (profileFilePicker) {
           if (state.user) state.user.profilePic = downloadURL;
           persistUser();
           firebase.database().ref("users/" + currentUserID).update({ profilePic: downloadURL });
-          alert("Profile picture kamyabi se upload ho gayi! Ã°Å¸â€Â¥");
+          alert("Profile picture kamyabi se upload ho gayi! 🔥");
         });
       }).catch((error) => {
         console.error(error);
@@ -1593,7 +1593,7 @@ function openProfileModal() {
 }
 
 /* =====================================================================
-   CHAT SYSTEM Ã¢â‚¬â€ Real-time Firebase chat with blue ticks & timestamps
+   CHAT SYSTEM — Real-time Firebase chat with blue ticks & timestamps
    =====================================================================
    Firebase data structure:
      chat_rooms/{roomId}/
@@ -1607,19 +1607,19 @@ function openProfileModal() {
        senderID:   "userA"
        text:       "Hello"
        timestamp:  SERVER_TIMESTAMP
-       seen:       false          Ã¢â€ Â turns true when receiver opens the chat
+       seen:       false          ← turns true when receiver opens the chat
    ===================================================================== */
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ module-level state Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── module-level state ────────────────────────────────────────────────
 let _chatRoomID         = "";    // currently open room
-let _chatMsgListener    = null;  // Firebase ref (chats/{roomId}) Ã¢â‚¬â€ detach on close
+let _chatMsgListener    = null;  // Firebase ref (chats/{roomId}) — detach on close
 let _presenceListener   = null;  // Firebase ref (users/{id}/status)
 let _inboxListener      = null;  // Firebase ref (chat_rooms) for inbox list
 let _unreadBadgeListener = null; // Firebase ref (chat_rooms) for global badge
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── helpers ─────────────────────────────────────────────────────────── */
 
-// Deterministic room ID: always smaller_larger so AÃ¢â€ â€B and BÃ¢â€ â€A share same room
+// Deterministic room ID: always smaller_larger so A↔B and B↔A share same room
 function _roomId(a, b) { return a < b ? a + "_" + b : b + "_" + a; }
 
 // Human-readable timestamp for chat bubbles
@@ -1634,7 +1634,7 @@ function formatChatTime(ts) {
   return date.toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ open chat window Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── open chat window ────────────────────────────────────────────────── */
 function openChatWithUser(receiverID, receiverName, receiverPic) {
   if (!state.user || !receiverID) return;
   const me = state.user.username;
@@ -1676,7 +1676,7 @@ function openChatWithUser(receiverID, receiverName, receiverPic) {
     const msg = snap.val();
     if (!msg || msg.senderID !== me) return;
     const el = document.getElementById("tick-" + snap.key);
-    if (el && msg.seen) { el.textContent = "Ã¢Å“â€œÃ¢Å“â€œ"; el.style.color = "#60A5FA"; }
+    if (el && msg.seen) { el.textContent = "✓✓"; el.style.color = "#60A5FA"; }
   });
 
   // -- Mark all incoming messages seen
@@ -1700,7 +1700,7 @@ function _appendBubble(key, msg, myID) {
   const isMine  = msg.senderID === myID;
   const timeStr = formatChatTime(msg.timestamp);
   const tick    = isMine
-    ? `<span id="tick-${key}" style="font-size:10px;margin-left:4px;color:${msg.seen ? "#60A5FA" : "#aaa"};">${msg.seen ? "Ã¢Å“â€œÃ¢Å“â€œ" : "Ã¢Å“â€œ"}</span>`
+    ? `<span id="tick-${key}" style="font-size:10px;margin-left:4px;color:${msg.seen ? "#60A5FA" : "#aaa"};">${msg.seen ? "✓✓" : "✓"}</span>`
     : "";
 
   const w = document.createElement("div");
@@ -1730,7 +1730,7 @@ function _markSeen(roomId, myID) {
   }).catch(() => {});
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ send a message Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── send a message ──────────────────────────────────────────────────── */
 function sendMessage() {
   if (!state.user || !_chatRoomID) return;
   const me     = state.user.username;
@@ -1769,7 +1769,7 @@ function sendMessage() {
     .transaction((c) => (c || 0) + 1).catch(() => {});
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ close chat modal Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── close chat modal ────────────────────────────────────────────────── */
 function closeChatModal() {
   const modal = document.getElementById("chat-modal");
   if (modal) modal.style.display = "none";
@@ -1783,7 +1783,7 @@ function _closeChatListeners() {
   _chatRoomID = "";
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Inbox overlay Ã¢â‚¬â€ fully self-contained, no HTML screen dependency Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── Inbox overlay — fully self-contained, no HTML screen dependency ── */
 // Creates its own fixed overlay injected into <body> so it works regardless
 // of how the HTML is structured.
 
@@ -1841,7 +1841,7 @@ function closeInboxScreen() {
   if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
 }
 
-// Alias Ã¢â‚¬â€ HTML back buttons may call either name
+// Alias — HTML back buttons may call either name
 function goBackToHome() { closeInboxScreen(); }
 
 // loadInbox() kept as a no-op so existing enterApp() references don't crash
@@ -1878,10 +1878,10 @@ function _renderInboxList() {
     if (rooms.length === 0) {
       list.innerHTML = `
         <div style="text-align:center;padding:60px 24px;color:#aaa;">
-          <div style="font-size:56px;margin-bottom:12px;">Ã°Å¸â€™Â¬</div>
+          <div style="font-size:56px;margin-bottom:12px;">💬</div>
           <p style="font-size:15px;margin:0;line-height:1.6;">
             Abhi koi chat nahi hai.<br>
-            Kisi post par <strong>Ã°Å¸â€™Â¬ Chat</strong> button dabayein!
+            Kisi post par <strong>💬 Chat</strong> button dabayein!
           </p>
         </div>`;
       return;
@@ -1941,7 +1941,7 @@ function _renderInboxList() {
           </div>
         </div>`;
 
-      // Open chat on click Ã¢â‚¬â€ close inbox first
+      // Open chat on click — close inbox first
       row.addEventListener("click", () => {
         closeInboxScreen();
         openChatWithUser(otherID, otherName, "");
@@ -1972,7 +1972,7 @@ function _renderInboxList() {
         if (stEl && u.status) {
           const s = u.status;
           if (s.state === "online") {
-            stEl.textContent   = "online Ã¢â€”Â";
+            stEl.textContent   = "online ●";
             stEl.style.color   = "#25D366";
           } else if (s.last_changed) {
             stEl.textContent = "last seen " + formatChatTime(s.last_changed);
@@ -1991,7 +1991,7 @@ function _renderInboxList() {
   });
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Global unread badge (message icon in header) Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── Global unread badge (message icon in header) ────────────────────── */
 function listenForChatNotifications() {
   if (!state.user || state.user.isAdmin) return;
   const me = state.user.username;
@@ -2016,13 +2016,13 @@ function listenForChatNotifications() {
   });
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Admin: full chat log for a specific user Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── Admin: full chat log for a specific user ────────────────────────── */
 function loadUserChatsInAdmin(targetUserId) {
   const container = document.getElementById("admin-user-messages-container");
   if (!container) return;
   container.innerHTML = `<p style="color:#666;font-size:13px;padding:6px 0;">Chat logs scan ho rahe hain...</p>`;
 
-  // Use the lightweight index first Ã¢â‚¬â€ no scanning the full messages tree
+  // Use the lightweight index first — no scanning the full messages tree
   db.ref("chat_rooms").once("value").then((snap) => {
     const rooms = [];
     snap.forEach((child) => {
@@ -2055,7 +2055,7 @@ function loadUserChatsInAdmin(targetUserId) {
 
         let html = `
           <div style="font-size:13px;font-weight:bold;color:#1E40AF;padding-bottom:6px;border-bottom:1px dashed #ccc;margin-bottom:8px;">
-            Ã°Å¸â€™Â¬ ${escapeHtml(myName)} Ã¢â€¡â€  ${escapeHtml(otherName)}
+            💬 ${escapeHtml(myName)} ⇆ ${escapeHtml(otherName)}
             <span style="font-size:11px;color:#999;font-weight:normal;margin-left:6px;">(${messages.length} messages)</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">`;
@@ -2068,7 +2068,7 @@ function loadUserChatsInAdmin(targetUserId) {
             const label   = isMe ? escapeHtml(myName) : escapeHtml(otherName);
             const color   = isMe ? "#1E40AF" : "#444";
             const time    = formatChatTime(msg.timestamp);
-            const seenStr = isMe ? (msg.seen ? " Ã¢Å“â€œÃ¢Å“â€œ" : " Ã¢Å“â€œ") : "";
+            const seenStr = isMe ? (msg.seen ? " ✓✓" : " ✓") : "";
             html += `
               <div style="font-size:12px;line-height:1.6;padding:2px 0;border-bottom:1px solid #f0f0f0;">
                 <strong style="color:${color};">${label}:</strong>
@@ -2093,7 +2093,7 @@ function loadUserChatsInAdmin(targetUserId) {
   });
 }
 
-/* Ã¢â€â‚¬Ã¢â€â‚¬ Presence Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ */
+/* ── Presence ────────────────────────────────────────────────────────── */
 function setupUserPresence() {
   if (!state.user || !state.user.username) return;
   const me        = state.user.username;
@@ -2118,7 +2118,7 @@ function _listenToPresence(targetUserId) {
     if (!snap.exists()) { el.innerText = "offline"; el.style.color = "#999"; return; }
     const s = snap.val();
     if (s.state === "online") {
-      el.innerText = "online Ã¢â€”Â"; el.style.color = "#25D366";
+      el.innerText = "online ●"; el.style.color = "#25D366";
     } else {
       el.style.color = "#999";
       el.innerText = s.last_changed ? "last seen " + formatChatTime(s.last_changed) : "offline";

@@ -954,7 +954,11 @@ function renderAdminUser() {
       })
     : "-";
 
-  // Render the full template first — then call loadUserChatsInAdmin
+  // Remove any pre-existing static duplicate chat history cards from HTML
+  // (handles cases where the HTML file already has a hard-coded admin-chat-history-card)
+  document.querySelectorAll("#admin-chat-history-card").forEach((el) => el.remove());
+
+  // Render the full template — single, authoritative chat history card
   container.innerHTML = `
     <div class="profile-card">
       <div class="avatar">${escapeHtml(initial)}</div>
@@ -1013,12 +1017,13 @@ function renderAdminUser() {
         box-shadow:0 2px 8px rgba(34,197,94,0.08);">
       <div style="font-weight:700;font-size:15px;color:#15803d;
                   margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-        📋 User Chat History <span style="font-size:12px;color:#16a34a;font-weight:400;">(Admin View)</span>
+        📋 User Chat History
+        <span style="font-size:12px;color:#16a34a;font-weight:400;">(Admin View)</span>
       </div>
       <div id="admin-user-messages-container">
-        <p style="color:#15803d;font-size:13px;text-align:center;padding:10px 0;">
-          Chat history load ho rahi hai...
-        </p>
+        <div style="text-align:center;padding:14px 0;color:#15803d;font-size:13px;">
+          ⏳ Chat history load ho rahi hai...
+        </div>
       </div>
     </div>`;
 
@@ -1578,39 +1583,43 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* ----------------------------- Profile ----------------------------- */
+/* ── Profile picture upload — FREE (base64 via canvas, no Firebase Storage) ── */
 const profileFilePicker = document.getElementById("profile-file-picker");
 if (profileFilePicker) {
-  profileFilePicker.addEventListener("change", function (e) {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
-      const myProfilePic = document.getElementById("my-profile-pic");
-      if (myProfilePic) {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          myProfilePic.src = event.target.result;
-          myProfilePic.style.opacity = "0.5";
-        };
-        reader.readAsDataURL(file);
-      }
-      const storageRef = firebase.storage().ref("profile_pics/" + currentUserID + ".jpg");
-      storageRef.put(file).then((snapshot) => {
-        snapshot.ref.getDownloadURL().then((downloadURL) => {
-          if (myProfilePic) {
-            myProfilePic.src = downloadURL;
-            myProfilePic.style.opacity = "1";
-          }
-          if (state.user) state.user.profilePic = downloadURL;
-          persistUser();
-          firebase.database().ref("users/" + currentUserID).update({ profilePic: downloadURL });
-          alert("Profile picture kamyabi se upload ho gayi! 🔥");
-        });
-      }).catch((error) => {
-        console.error(error);
-        if (myProfilePic) myProfilePic.style.opacity = "1";
-        alert("Upload karne mein koi masla aaya.");
-      });
+  profileFilePicker.addEventListener("change", async function (e) {
+    if (!e.target.files || !e.target.files[0]) return;
+    const file = e.target.files[0];
+    const currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
+    const myProfilePic = document.getElementById("my-profile-pic");
+
+    // Show preview immediately (loading state)
+    if (myProfilePic) {
+      const previewReader = new FileReader();
+      previewReader.onload = (ev) => {
+        myProfilePic.src = ev.target.result;
+        myProfilePic.style.opacity = "0.5";
+      };
+      previewReader.readAsDataURL(file);
     }
+
+    try {
+      // Resize to max 300×300 for profile pics (keeps RTDB node small)
+      const base64 = await _resizeImageToBase64(file, 300, 0.80);
+
+      if (myProfilePic) {
+        myProfilePic.src = base64;
+        myProfilePic.style.opacity = "1";
+      }
+      if (state.user) state.user.profilePic = base64;
+      persistUser();
+      await firebase.database().ref("users/" + currentUserID).update({ profilePic: base64 });
+      showToast("Profile picture update ho gayi! ✅", "success");
+    } catch (err) {
+      console.error("Profile pic error:", err);
+      if (myProfilePic) myProfilePic.style.opacity = "1";
+      showToast("Upload mein masla aaya. Phir try karein.", "error");
+    }
+    e.target.value = ""; // reset so same file can be re-selected
   });
 }
 
@@ -2139,190 +2148,236 @@ function loadUserChatsInAdmin(targetUserId) {
   const container = document.getElementById("admin-user-messages-container");
   if (!container) return;
 
-  // Show loading state (matches the placeholder text the user sees)
   container.innerHTML = `
     <div style="text-align:center;padding:14px 0;color:#15803d;font-size:13px;">
       ⏳ Chat history load ho rahi hai...
     </div>`;
 
-  // ── Step 1: query chat_rooms index (fast, O(rooms) not O(messages)) ──
-  db.ref("chat_rooms").once("value").then((snap) => {
-    const rooms = [];
-    snap.forEach((child) => {
-      const r = child.val();
-      // Match on participants map (written by sendMessage / _pushChatMessage)
-      if (r && r.participants && r.participants[targetUserId] === true)
-        rooms.push({ id: child.key, ...r });
-    });
-
-    // ── Step 2: fall back to scanning chats/ node keys when index is empty ──
-    // (covers chats sent before the participants index was introduced)
-    if (rooms.length === 0) {
-      return db.ref("chats").once("value").then((chatsSnap) => {
-        const extraRooms = [];
-        chatsSnap.forEach((roomSnap) => {
-          // Scan messages in the room to see if any were sent by targetUserId
-          let found = false;
-          roomSnap.forEach((msgSnap) => {
-            if (!found && msgSnap.val().senderID === targetUserId) {
-              found = true;
-              extraRooms.push({ id: roomSnap.key });
-            }
-          });
-        });
-        return extraRooms;
+  // ── Wait for Firebase Auth to be ready before querying ───────────────
+  // This prevents PERMISSION_DENIED when admin just logged in anonymously
+  function _doLoad() {
+    // ── Step 1: query chat_rooms index ───────────────────────────────────
+    db.ref("chat_rooms").once("value").then((snap) => {
+      const rooms = [];
+      snap.forEach((child) => {
+        const r = child.val();
+        if (r && r.participants && r.participants[targetUserId] === true)
+          rooms.push({ id: child.key, ...r });
       });
-    }
-    return rooms;
 
-  }).then((rooms) => {
-
-    if (!rooms || rooms.length === 0) {
-      container.innerHTML = `
-        <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
-          📭 Is user ne abhi tak kisi se chat nahi ki.
-        </div>`;
-      return;
-    }
-
-    container.innerHTML = ""; // clear before appending
-
-    // ── Step 3: fetch full messages for each room in parallel ─────────────
-    const fetches = rooms.map((room) =>
-      db.ref("chats/" + room.id).once("value").then((msgSnap) => {
-
-        // Determine participant names
-        // First try the participantNames index; fall back to parsing IDs
-        const names   = room.participantNames || {};
-        const allKeys = Object.keys(names);
-        const otherID = allKeys.find((k) => k !== targetUserId) || "—";
-        const myName  = names[targetUserId] || targetUserId;
-        const otherName = names[otherID]   || otherID;
-
-        const messages = [];
-        if (msgSnap.exists()) {
-          msgSnap.forEach((m) => messages.push({ key: m.key, ...m.val() }));
-          messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-        }
-
-        // ── Room card ─────────────────────────────────────────────────────
-        const card = document.createElement("div");
-        card.style.cssText = [
-          "background:white", "border:1px solid #bbf7d0",
-          "border-radius:10px", "overflow:hidden",
-          "margin-bottom:12px",
-          "box-shadow:0 1px 4px rgba(34,197,94,0.1)",
-        ].join(";");
-
-        // Header row
-        const header = document.createElement("div");
-        header.style.cssText = [
-          "background:#dcfce7", "padding:8px 12px",
-          "display:flex", "align-items:center", "justify-content:space-between",
-          "border-bottom:1px solid #bbf7d0",
-        ].join(";");
-        header.innerHTML = `
-          <span style="font-size:13px;font-weight:700;color:#15803d;">
-            💬 ${escapeHtml(myName)} ↔ ${escapeHtml(otherName)}
-          </span>
-          <span style="font-size:11px;color:#6b7280;background:#f0fdf4;
-                       border-radius:10px;padding:2px 8px;">
-            ${messages.length} message${messages.length !== 1 ? "s" : ""}
-          </span>`;
-        card.appendChild(header);
-
-        // Messages scroll area
-        const msgArea = document.createElement("div");
-        msgArea.style.cssText = [
-          "display:flex", "flex-direction:column", "gap:6px",
-          "padding:10px 12px", "max-height:260px", "overflow-y:auto",
-          "background:#fafafa",
-        ].join(";");
-
-        if (!messages.length) {
-          msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">Koi message nahi.</p>`;
-        } else {
-          messages.forEach((msg) => {
-            const isTarget = msg.senderID === targetUserId;
-            const senderLabel = escapeHtml(isTarget ? myName : otherName);
-            const timeStr     = formatChatTime(msg.timestamp);
-            const seenTick    = isTarget ? (msg.seen ? " <span style='color:#3b82f6;'>✓✓</span>" : " <span style='color:#9ca3af;'>✓</span>") : "";
-
-            const bubble = document.createElement("div");
-            bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isTarget ? "flex-end" : "flex-start"};`;
-
-            // Determine bubble content
-            const type = msg.type || "text";
-            let content = "";
-            if (type === "audio") {
-              content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
-                style="max-width:200px;outline:none;border-radius:8px;display:block;"></audio>`;
-            } else if (type === "location") {
-              content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank"
-                style="display:flex;align-items:center;gap:6px;color:${isTarget?"#1d4ed8":"#059669"};font-size:12px;text-decoration:none;">
-                📍 <span style="font-weight:600;">View Location on Map</span>
-              </a>`;
-            } else if (type === "image") {
-              content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
-                style="max-width:160px;max-height:160px;border-radius:6px;object-fit:cover;display:block;"
-                onerror="this.style.display='none'">`;
-            } else if (type === "document") {
-              content = `<span style="font-size:12px;">📄 <a href="${escapeHtml(msg.fileUrl || "")}" target="_blank"
-                style="color:${isTarget?"#93c5fd":"#047857"};">${escapeHtml(msg.fileName || "Document")}</a></span>`;
+      // ── Step 2: fallback — scan chats/ node if index has no matches ─────
+      if (rooms.length === 0) {
+        return db.ref("chats").once("value").then((chatsSnap) => {
+          const extraRooms = [];
+          chatsSnap.forEach((roomSnap) => {
+            // Only include rooms where targetUserId is part of the room key
+            const roomKey = roomSnap.key || "";
+            if (roomKey.includes(targetUserId)) {
+              extraRooms.push({ id: roomSnap.key });
             } else {
-              content = `<span style="font-size:13px;">${escapeHtml(msg.text || "")}</span>`;
+              // Scan messages as final fallback
+              let found = false;
+              roomSnap.forEach((msgSnap) => {
+                if (!found && msgSnap.val().senderID === targetUserId) {
+                  found = true;
+                  extraRooms.push({ id: roomSnap.key });
+                }
+              });
             }
-
-            bubble.innerHTML = `
-              <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">
-                ${senderLabel} · ${timeStr}${seenTick}
-              </div>
-              <div style="
-                background:${isTarget ? "#1e40af" : "white"};
-                color:${isTarget ? "#fff" : "#111"};
-                padding:7px 11px;
-                border-radius:${isTarget ? "12px 12px 2px 12px" : "12px 12px 12px 2px"};
-                max-width:75%;
-                font-size:13px;
-                box-shadow:0 1px 2px rgba(0,0,0,0.08);
-                overflow:hidden;">
-                ${content}
-              </div>`;
-            msgArea.appendChild(bubble);
           });
-          // Scroll to bottom of messages
-          setTimeout(() => { msgArea.scrollTop = msgArea.scrollHeight; }, 0);
-        }
+          return extraRooms;
+        });
+      }
+      return rooms;
 
-        card.appendChild(msgArea);
-        container.appendChild(card);
+    }).then((rooms) => {
 
-      }).catch((err) => {
-        console.warn("Room messages load error:", room.id, err);
-      })
-    );
-
-    Promise.all(fetches).then(() => {
-      if (!container.children.length) {
+      if (!rooms || rooms.length === 0) {
         container.innerHTML = `
           <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
-            📭 Is user ki koi chat history nahi mili.
+            📭 Is user ne abhi tak kisi se chat nahi ki.
           </div>`;
+        return;
+      }
+
+      container.innerHTML = ""; // clear loading indicator
+
+      // ── Step 3: fetch ALL messages for each room in parallel ─────────────
+      const fetches = rooms.map((room) =>
+        db.ref("chats/" + room.id).once("value").then((msgSnap) => {
+
+          // Resolve participant names from index, falling back to room key parts
+          const names     = room.participantNames || {};
+          const roomParts = room.id.split("_");
+          const otherID   = Object.keys(names).find((k) => k !== targetUserId)
+                            || roomParts.find((p) => p !== targetUserId)
+                            || "—";
+          const myName    = names[targetUserId] || targetUserId;
+          const otherName = names[otherID]      || otherID;
+
+          const messages = [];
+          if (msgSnap.exists()) {
+            msgSnap.forEach((m) => messages.push({ key: m.key, ...m.val() }));
+            messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+          }
+
+          // ── Room card ───────────────────────────────────────────────────
+          const card = document.createElement("div");
+          card.style.cssText = [
+            "background:white", "border:1px solid #bbf7d0",
+            "border-radius:10px", "overflow:hidden",
+            "margin-bottom:12px",
+            "box-shadow:0 1px 4px rgba(34,197,94,0.1)",
+          ].join(";");
+
+          // Header
+          const header = document.createElement("div");
+          header.style.cssText = [
+            "background:#dcfce7", "padding:8px 12px",
+            "display:flex", "align-items:center", "justify-content:space-between",
+            "border-bottom:1px solid #bbf7d0",
+          ].join(";");
+          header.innerHTML = `
+            <span style="font-size:13px;font-weight:700;color:#15803d;">
+              💬 ${escapeHtml(myName)} ↔ ${escapeHtml(otherName)}
+            </span>
+            <span style="font-size:11px;color:#6b7280;background:#f0fdf4;
+                         border-radius:10px;padding:2px 8px;">
+              ${messages.length} message${messages.length !== 1 ? "s" : ""}
+            </span>`;
+          card.appendChild(header);
+
+          // Messages area
+          const msgArea = document.createElement("div");
+          msgArea.style.cssText = [
+            "display:flex", "flex-direction:column", "gap:6px",
+            "padding:10px 12px", "max-height:300px", "overflow-y:auto",
+            "background:#fafafa",
+          ].join(";");
+
+          if (!messages.length) {
+            msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:8px 0;">Koi message nahi.</p>`;
+          } else {
+            messages.forEach((msg) => {
+              const isTarget    = msg.senderID === targetUserId;
+              const senderLabel = escapeHtml(isTarget ? myName : otherName);
+              const timeStr     = formatChatTime(msg.timestamp);
+              const seenTick    = isTarget
+                ? (msg.seen
+                    ? " <span style='color:#3b82f6;'>✓✓</span>"
+                    : " <span style='color:#9ca3af;'>✓</span>")
+                : "";
+
+              const bubble = document.createElement("div");
+              bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isTarget ? "flex-end" : "flex-start"};`;
+
+              // Render bubble content by type
+              const type = msg.type || "text";
+              let content = "";
+              if (type === "audio") {
+                content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
+                  style="max-width:200px;outline:none;border-radius:8px;display:block;"></audio>`;
+              } else if (type === "location") {
+                content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank"
+                  style="display:flex;align-items:center;gap:6px;color:${isTarget ? "#1d4ed8" : "#059669"};
+                         font-size:12px;text-decoration:none;">
+                  📍 <span style="font-weight:600;">View Location on Map</span>
+                </a>`;
+              } else if (type === "image") {
+                content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
+                  style="max-width:160px;max-height:160px;border-radius:6px;object-fit:cover;display:block;"
+                  onerror="this.style.display='none'">`;
+              } else if (type === "document") {
+                const docHref = escapeHtml(msg.fileUrl || "");
+                const docName = escapeHtml(msg.fileName || "Document");
+                content = `<span style="font-size:12px;">📄 
+                  <a href="${docHref}" target="_blank" download="${docName}"
+                     style="color:${isTarget ? "#93c5fd" : "#047857"};">${docName}</a>
+                </span>`;
+              } else {
+                content = `<span style="font-size:13px;">${escapeHtml(msg.text || "")}</span>`;
+              }
+
+              bubble.innerHTML = `
+                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">
+                  ${senderLabel} · ${timeStr}${seenTick}
+                </div>
+                <div style="
+                  background:${isTarget ? "#1e40af" : "white"};
+                  color:${isTarget ? "#fff" : "#111"};
+                  padding:7px 11px;
+                  border-radius:${isTarget ? "12px 12px 2px 12px" : "12px 12px 12px 2px"};
+                  max-width:75%;font-size:13px;
+                  box-shadow:0 1px 2px rgba(0,0,0,0.08);
+                  overflow:hidden;word-break:break-word;">
+                  ${content}
+                </div>`;
+              msgArea.appendChild(bubble);
+            });
+            // Auto-scroll to latest message
+            setTimeout(() => { msgArea.scrollTop = msgArea.scrollHeight; }, 30);
+          }
+
+          card.appendChild(msgArea);
+          container.appendChild(card);
+
+        }).catch((err) => {
+          console.warn("Room messages load error:", room.id, err.message);
+        })
+      );
+
+      Promise.all(fetches).then(() => {
+        if (!container.children.length) {
+          container.innerHTML = `
+            <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
+              📭 Is user ki koi chat history nahi mili.
+            </div>`;
+        }
+      });
+
+    }).catch((err) => {
+      console.error("loadUserChatsInAdmin fetch error:", err);
+      const isPermDenied = err && (err.code === "PERMISSION_DENIED" || (err.message || "").includes("permission"));
+      container.innerHTML = `
+        <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
+          ⚠️ Chat history load nahi hui.<br>
+          <span style="font-size:11px;color:#9ca3af;">
+            ${isPermDenied
+              ? "Firebase rules: Firebase Console → Authentication → Sign-in providers → Anonymous signin enable karein."
+              : "Internet ya Firebase connection check karein."}
+          </span>
+          <br><button onclick="loadUserChatsInAdmin('${escapeHtml(targetUserId)}')"
+            style="margin-top:8px;padding:6px 14px;background:#1e40af;color:white;
+                   border:none;border-radius:6px;font-size:12px;cursor:pointer;">
+            ↺ Dobara Try Karein
+          </button>
+        </div>`;
+    });
+  } // end _doLoad
+
+  // Ensure Firebase Auth session exists before querying
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    _doLoad();
+  } else {
+    // Wait for auth state to resolve (max 5s) then load
+    const unsub = auth.onAuthStateChanged((user) => {
+      unsub();
+      if (user) {
+        _doLoad();
+      } else {
+        // Sign in anonymously as fallback
+        auth.signInAnonymously()
+          .then(() => _doLoad())
+          .catch(() => {
+            container.innerHTML = `
+              <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
+                ⚠️ Auth error. Firebase Console mein Anonymous signin enable karein.
+              </div>`;
+          });
       }
     });
-
-  }).catch((err) => {
-    console.error("loadUserChatsInAdmin error:", err);
-    container.innerHTML = `
-      <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
-        ⚠️ Chat history load nahi hui.<br>
-        <span style="font-size:11px;color:#9ca3af;">
-          ${err && err.code === "PERMISSION_DENIED"
-            ? "Firebase rules: Anonymous auth enable karein (Firebase Console → Authentication → Sign-in providers → Anonymous)."
-            : "Internet ya Firebase connection check karein."}
-        </span>
-      </div>`;
-  });
+  }
 }
 
 /* ── Presence ────────────────────────────────────────────────────────── */
@@ -2555,7 +2610,7 @@ function _startVoiceRecord() {
       secs++;
       const el = document.getElementById("_rec-time");
       if (el) el.textContent = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
-      if (secs >= 120) _stopVoiceRecord(); // auto-stop at 2 min
+      if (secs >= 60) _stopVoiceRecord(); // auto-stop at 60 seconds
     }, 1000);
 
   }).catch((err) => {
@@ -2587,22 +2642,61 @@ function _getBestAudioMime() {
   return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
 }
 
-function _uploadAudio(blob) {
+/* ── FREE Media Upload Helpers (no Firebase Storage required) ────────
+   Strategy: convert files to base64 data URIs and store directly in
+   Firebase Realtime Database. Images are resized via canvas (max 800px)
+   to keep node sizes small. Voice notes auto-stop at 60 seconds.
+   Documents are capped at 800 KB.
+   ──────────────────────────────────────────────────────────────────── */
+
+function _blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function _resizeImageToBase64(file, maxPx, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        const ratio = Math.min(maxPx / w, maxPx / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", quality || 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load error")); };
+    img.src = url;
+  });
+}
+
+async function _uploadAudio(blob) {
   if (!state.user || !_chatRoomID) return;
-  const ext  = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
-  const path = "chat_audio/" + _chatRoomID + "/" + Date.now() + "." + ext;
 
-  showToast("Voice message upload ho raha hai…", "success", 4000);
+  // Guard: blob must be reasonable size (max 3 MB for a ~60s voice note)
+  if (blob.size > 3 * 1024 * 1024) {
+    showToast("Voice note bahut lamba hai. Max 60 seconds allowed.", "error");
+    return;
+  }
 
-  firebase.storage().ref(path).put(blob)
-    .then((snap) => snap.ref.getDownloadURL())
-    .then((url) => {
-      _pushChatMessage({ type: "audio", audioUrl: url, text: "🎤 Voice message" });
-    })
-    .catch((err) => {
-      console.error("Audio upload error:", err);
-      showToast("Upload fail. Phir try karein.", "error");
-    });
+  showToast("Voice message save ho raha hai…", "success", 3000);
+  try {
+    const base64 = await _blobToBase64(blob);
+    _pushChatMessage({ type: "audio", audioUrl: base64, text: "🎤 Voice message" });
+  } catch (err) {
+    console.error("Audio encode error:", err);
+    showToast("Voice message save nahi hua. Phir try karein.", "error");
+  }
 }
 
 /* ── 4. Location sharing ─────────────────────────────────────────────── */
@@ -2636,32 +2730,35 @@ function openFileAttachment() {
   if (inp) inp.click();
 }
 
-function _handleFileAttachment(file) {
+async function _handleFileAttachment(file) {
   if (!state.user || !_chatRoomID) return;
 
   const isImage = file.type.startsWith("image/");
-  const folder  = isImage ? "chat_attachments/images" : "chat_attachments/docs";
-  const path    = folder + "/" + _chatRoomID + "/" + Date.now() + "_" + file.name;
-
-  // Show spinner
   const spinner = document.getElementById("_upload-spinner");
   if (spinner) spinner.style.display = "block";
 
-  firebase.storage().ref(path).put(file)
-    .then((snap) => snap.ref.getDownloadURL())
-    .then((url) => {
+  try {
+    if (isImage) {
+      // Resize image to max 800px and convert to base64 JPEG — keeps size tiny
+      const base64 = await _resizeImageToBase64(file, 800, 0.72);
       if (spinner) spinner.style.display = "none";
-      if (isImage) {
-        _pushChatMessage({ type: "image", fileUrl: url, fileName: file.name, text: "🖼 Image" });
-      } else {
-        _pushChatMessage({ type: "document", fileUrl: url, fileName: file.name, text: "📄 " + file.name });
+      _pushChatMessage({ type: "image", fileUrl: base64, fileName: file.name, text: "🖼 Image" });
+    } else {
+      // Documents — enforce 800 KB size limit to fit in Firebase RTDB node
+      if (file.size > 800 * 1024) {
+        if (spinner) spinner.style.display = "none";
+        showToast("File bahut bari hai. Max 800 KB allowed. PDF compress kar ke bhejein.", "error", 4000);
+        return;
       }
-    })
-    .catch((err) => {
+      const base64 = await _blobToBase64(file);
       if (spinner) spinner.style.display = "none";
-      console.error("File upload error:", err);
-      showToast("Upload fail. Phir try karein.", "error");
-    });
+      _pushChatMessage({ type: "document", fileUrl: base64, fileName: file.name, text: "📄 " + file.name });
+    }
+  } catch (err) {
+    if (spinner) spinner.style.display = "none";
+    console.error("File attach error:", err);
+    showToast("File bhejne mein masla aaya. Phir try karein.", "error");
+  }
 }
 
 /* ── Shared helper: push any message type to Firebase ────────────────── */

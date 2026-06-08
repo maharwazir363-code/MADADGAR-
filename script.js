@@ -1004,16 +1004,25 @@ function renderAdminUser() {
       }
     </div>
 
-    <div style="margin-top:20px;">
-      <div style="font-weight:bold;font-size:15px;margin-bottom:8px;border-bottom:2px solid #eee;padding-bottom:6px;">
-        💬 Chat Logs
+    <div id="admin-chat-history-card" style="
+        margin-top:20px;
+        background:linear-gradient(135deg,#f0fff4,#dcfce7);
+        border:1.5px solid #86efac;
+        border-radius:12px;
+        padding:16px;
+        box-shadow:0 2px 8px rgba(34,197,94,0.08);">
+      <div style="font-weight:700;font-size:15px;color:#15803d;
+                  margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+        📋 User Chat History <span style="font-size:12px;color:#16a34a;font-weight:400;">(Admin View)</span>
       </div>
       <div id="admin-user-messages-container">
-        <p style="color:#666;font-size:13px;">Chats scan ho rahi hain...</p>
+        <p style="color:#15803d;font-size:13px;text-align:center;padding:10px 0;">
+          Chat history load ho rahi hai...
+        </p>
       </div>
     </div>`;
 
-  // FIX: call AFTER innerHTML is set so the container element exists
+  // Call AFTER innerHTML is set so the container element exists in the DOM
   loadUserChatsInAdmin(username);
 }
 
@@ -1272,12 +1281,14 @@ function attachEvents() {
         // Sign in anonymously so Firebase Auth session exists (auth != null in rules).
         // Requires Anonymous sign-in enabled in Firebase Console →
         //   Authentication → Sign-in providers → Anonymous → Enable
-        auth.signInAnonymously().catch(() => {
-          // If anonymous auth isn't enabled yet, proceed anyway (rules will
-          // block writes but reads on open paths still work).
-          console.warn("Anonymous auth unavailable — enable it in Firebase Console for full rule enforcement.");
-        });
-        enterApp();
+        // Wait for anonymous auth to complete BEFORE entering app.
+        // Without this, loadUserChatsInAdmin fires before auth != null
+        // and Firebase returns permission-denied (stuck on loading).
+        auth.signInAnonymously()
+          .catch(() => {
+            console.warn("Anonymous auth unavailable — enable it in Firebase Console → Authentication → Sign-in providers → Anonymous.");
+          })
+          .finally(() => enterApp());
       } else {
         closeAdminGate();
       }
@@ -1489,7 +1500,6 @@ function enterApp() {
     renderAdminUsersTable();
     renderAdminStats();
     renderReportedPosts();
-    _injectAdminChatsBtn();
   } else {
     showScreen("home");
     subscribePosts();
@@ -2128,76 +2138,190 @@ function listenForChatNotifications() {
 function loadUserChatsInAdmin(targetUserId) {
   const container = document.getElementById("admin-user-messages-container");
   if (!container) return;
-  container.innerHTML = `<p style="color:#666;font-size:13px;padding:6px 0;">Chat logs scan ho rahe hain...</p>`;
 
-  // Use the lightweight index first — no scanning the full messages tree
+  // Show loading state (matches the placeholder text the user sees)
+  container.innerHTML = `
+    <div style="text-align:center;padding:14px 0;color:#15803d;font-size:13px;">
+      ⏳ Chat history load ho rahi hai...
+    </div>`;
+
+  // ── Step 1: query chat_rooms index (fast, O(rooms) not O(messages)) ──
   db.ref("chat_rooms").once("value").then((snap) => {
     const rooms = [];
     snap.forEach((child) => {
       const r = child.val();
-      if (r && r.participants && r.participants[targetUserId])
+      // Match on participants map (written by sendMessage / _pushChatMessage)
+      if (r && r.participants && r.participants[targetUserId] === true)
         rooms.push({ id: child.key, ...r });
     });
 
+    // ── Step 2: fall back to scanning chats/ node keys when index is empty ──
+    // (covers chats sent before the participants index was introduced)
     if (rooms.length === 0) {
-      container.innerHTML = `<p style="color:#999;font-size:13px;text-align:center;padding:10px;">Is user ne abhi tak kisi se chat nahi ki.</p>`;
+      return db.ref("chats").once("value").then((chatsSnap) => {
+        const extraRooms = [];
+        chatsSnap.forEach((roomSnap) => {
+          // Scan messages in the room to see if any were sent by targetUserId
+          let found = false;
+          roomSnap.forEach((msgSnap) => {
+            if (!found && msgSnap.val().senderID === targetUserId) {
+              found = true;
+              extraRooms.push({ id: roomSnap.key });
+            }
+          });
+        });
+        return extraRooms;
+      });
+    }
+    return rooms;
+
+  }).then((rooms) => {
+
+    if (!rooms || rooms.length === 0) {
+      container.innerHTML = `
+        <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
+          📭 Is user ne abhi tak kisi se chat nahi ki.
+        </div>`;
       return;
     }
 
-    container.innerHTML = ""; // clear before appending rooms
+    container.innerHTML = ""; // clear before appending
 
-    // Fetch full message history for each room in parallel
+    // ── Step 3: fetch full messages for each room in parallel ─────────────
     const fetches = rooms.map((room) =>
       db.ref("chats/" + room.id).once("value").then((msgSnap) => {
-        const parts      = room.id.split("_");
-        const otherID    = parts[0] === targetUserId ? parts[1] : parts[0];
-        const myName     = (room.participantNames && room.participantNames[targetUserId]) || targetUserId;
-        const otherName  = (room.participantNames && room.participantNames[otherID]) || otherID;
+
+        // Determine participant names
+        // First try the participantNames index; fall back to parsing IDs
+        const names   = room.participantNames || {};
+        const allKeys = Object.keys(names);
+        const otherID = allKeys.find((k) => k !== targetUserId) || "—";
+        const myName  = names[targetUserId] || targetUserId;
+        const otherName = names[otherID]   || otherID;
 
         const messages = [];
-        if (msgSnap.exists()) msgSnap.forEach((m) => messages.push({ key: m.key, ...m.val() }));
-        messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        if (msgSnap.exists()) {
+          msgSnap.forEach((m) => messages.push({ key: m.key, ...m.val() }));
+          messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        }
 
-        const box = document.createElement("div");
-        box.style.cssText = "background:#f9f9f9;border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:10px;";
+        // ── Room card ─────────────────────────────────────────────────────
+        const card = document.createElement("div");
+        card.style.cssText = [
+          "background:white", "border:1px solid #bbf7d0",
+          "border-radius:10px", "overflow:hidden",
+          "margin-bottom:12px",
+          "box-shadow:0 1px 4px rgba(34,197,94,0.1)",
+        ].join(";");
 
-        let html = `
-          <div style="font-size:13px;font-weight:bold;color:#1E40AF;padding-bottom:6px;border-bottom:1px dashed #ccc;margin-bottom:8px;">
-            💬 ${escapeHtml(myName)} ⇆ ${escapeHtml(otherName)}
-            <span style="font-size:11px;color:#999;font-weight:normal;margin-left:6px;">(${messages.length} messages)</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto;">`;
+        // Header row
+        const header = document.createElement("div");
+        header.style.cssText = [
+          "background:#dcfce7", "padding:8px 12px",
+          "display:flex", "align-items:center", "justify-content:space-between",
+          "border-bottom:1px solid #bbf7d0",
+        ].join(";");
+        header.innerHTML = `
+          <span style="font-size:13px;font-weight:700;color:#15803d;">
+            💬 ${escapeHtml(myName)} ↔ ${escapeHtml(otherName)}
+          </span>
+          <span style="font-size:11px;color:#6b7280;background:#f0fdf4;
+                       border-radius:10px;padding:2px 8px;">
+            ${messages.length} message${messages.length !== 1 ? "s" : ""}
+          </span>`;
+        card.appendChild(header);
+
+        // Messages scroll area
+        const msgArea = document.createElement("div");
+        msgArea.style.cssText = [
+          "display:flex", "flex-direction:column", "gap:6px",
+          "padding:10px 12px", "max-height:260px", "overflow-y:auto",
+          "background:#fafafa",
+        ].join(";");
 
         if (!messages.length) {
-          html += `<p style="color:#aaa;font-size:12px;margin:0;">Koi message nahi.</p>`;
+          msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">Koi message nahi.</p>`;
         } else {
           messages.forEach((msg) => {
-            const isMe    = msg.senderID === targetUserId;
-            const label   = isMe ? escapeHtml(myName) : escapeHtml(otherName);
-            const color   = isMe ? "#1E40AF" : "#444";
-            const time    = formatChatTime(msg.timestamp);
-            const seenStr = isMe ? (msg.seen ? " ✓✓" : " ✓") : "";
-            html += `
-              <div style="font-size:12px;line-height:1.6;padding:2px 0;border-bottom:1px solid #f0f0f0;">
-                <strong style="color:${color};">${label}:</strong>
-                <span>${escapeHtml(msg.text || "")}</span>
-                <span style="font-size:10px;color:#aaa;margin-left:6px;">${time}${seenStr}</span>
+            const isTarget = msg.senderID === targetUserId;
+            const senderLabel = escapeHtml(isTarget ? myName : otherName);
+            const timeStr     = formatChatTime(msg.timestamp);
+            const seenTick    = isTarget ? (msg.seen ? " <span style='color:#3b82f6;'>✓✓</span>" : " <span style='color:#9ca3af;'>✓</span>") : "";
+
+            const bubble = document.createElement("div");
+            bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isTarget ? "flex-end" : "flex-start"};`;
+
+            // Determine bubble content
+            const type = msg.type || "text";
+            let content = "";
+            if (type === "audio") {
+              content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
+                style="max-width:200px;outline:none;border-radius:8px;display:block;"></audio>`;
+            } else if (type === "location") {
+              content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank"
+                style="display:flex;align-items:center;gap:6px;color:${isTarget?"#1d4ed8":"#059669"};font-size:12px;text-decoration:none;">
+                📍 <span style="font-weight:600;">View Location on Map</span>
+              </a>`;
+            } else if (type === "image") {
+              content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
+                style="max-width:160px;max-height:160px;border-radius:6px;object-fit:cover;display:block;"
+                onerror="this.style.display='none'">`;
+            } else if (type === "document") {
+              content = `<span style="font-size:12px;">📄 <a href="${escapeHtml(msg.fileUrl || "")}" target="_blank"
+                style="color:${isTarget?"#93c5fd":"#047857"};">${escapeHtml(msg.fileName || "Document")}</a></span>`;
+            } else {
+              content = `<span style="font-size:13px;">${escapeHtml(msg.text || "")}</span>`;
+            }
+
+            bubble.innerHTML = `
+              <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">
+                ${senderLabel} · ${timeStr}${seenTick}
+              </div>
+              <div style="
+                background:${isTarget ? "#1e40af" : "white"};
+                color:${isTarget ? "#fff" : "#111"};
+                padding:7px 11px;
+                border-radius:${isTarget ? "12px 12px 2px 12px" : "12px 12px 12px 2px"};
+                max-width:75%;
+                font-size:13px;
+                box-shadow:0 1px 2px rgba(0,0,0,0.08);
+                overflow:hidden;">
+                ${content}
               </div>`;
+            msgArea.appendChild(bubble);
           });
+          // Scroll to bottom of messages
+          setTimeout(() => { msgArea.scrollTop = msgArea.scrollHeight; }, 0);
         }
-        html += `</div>`;
-        box.innerHTML = html;
-        container.appendChild(box);
-      }).catch(() => {})
+
+        card.appendChild(msgArea);
+        container.appendChild(card);
+
+      }).catch((err) => {
+        console.warn("Room messages load error:", room.id, err);
+      })
     );
 
     Promise.all(fetches).then(() => {
-      if (!container.children.length)
-        container.innerHTML = `<p style="color:#999;font-size:13px;text-align:center;">Is user ki koi chat nahi mili.</p>`;
+      if (!container.children.length) {
+        container.innerHTML = `
+          <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
+            📭 Is user ki koi chat history nahi mili.
+          </div>`;
+      }
     });
+
   }).catch((err) => {
-    console.error("Admin chat load error:", err);
-    container.innerHTML = `<p style="color:red;font-size:13px;">Chat data load fail. Phir koshish karein.</p>`;
+    console.error("loadUserChatsInAdmin error:", err);
+    container.innerHTML = `
+      <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
+        ⚠️ Chat history load nahi hui.<br>
+        <span style="font-size:11px;color:#9ca3af;">
+          ${err && err.code === "PERMISSION_DENIED"
+            ? "Firebase rules: Anonymous auth enable karein (Firebase Console → Authentication → Sign-in providers → Anonymous)."
+            : "Internet ya Firebase connection check karein."}
+        </span>
+      </div>`;
   });
 }
 

@@ -1009,21 +1009,17 @@ function renderAdminUser() {
     </div>
 
     <div id="admin-chat-history-card" style="
-        margin-top:20px;
-        background:linear-gradient(135deg,#f0fff4,#dcfce7);
-        border:1.5px solid #86efac;
-        border-radius:12px;
-        padding:16px;
-        box-shadow:0 2px 8px rgba(34,197,94,0.08);">
-      <div style="font-weight:700;font-size:15px;color:#15803d;
-                  margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-        📋 User Chat History
-        <span style="font-size:12px;color:#16a34a;font-weight:400;">(Admin View)</span>
-      </div>
-      <div id="admin-user-messages-container">
-        <div style="text-align:center;padding:14px 0;color:#15803d;font-size:13px;">
-          ⏳ Chat history load ho rahi hai...
-        </div>
+        margin: 15px 0;
+        background: #fff;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        border-top: 4px solid #075E54;">
+      <h3 style="margin-top: 0; color: #075E54; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
+        📋 User Chat History (Admin View)
+      </h3>
+      <div id="admin-user-messages-container" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 5px;">
+        <p style="color: #888; font-style: italic; font-size: 13px;">⏳ Chat history load ho rahi hai...</p>
       </div>
     </div>`;
 

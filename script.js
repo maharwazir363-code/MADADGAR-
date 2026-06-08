@@ -167,12 +167,25 @@ async function handleLogin(e) {
       await db.ref("users/" + cleanUsername + "/emailVerified").set(true);
     }
 
-    await auth.signOut();
+    // ── Keep the Firebase Auth session alive so security rules work ──────
+    // DO NOT call auth.signOut() here — the session is needed for RTDB rules.
+    // logout() already calls auth.signOut() when the user explicitly logs out.
+
+    const uid = cred.user.uid;
+
+    // Write uid→username reverse-index (idempotent — safe to rewrite on every login)
+    await db.ref("uid_to_username/" + uid).set(cleanUsername);
+
+    // Backfill uid into user profile if it wasn't stored during signup
+    if (!data.uid) {
+      await db.ref("users/" + cleanUsername + "/uid").set(uid);
+    }
 
     state.user = {
       username: data.username || cleanUsername,
       fullName: data.fullName,
       email: data.email,
+      uid,
       isAdmin: false,
     };
     persistUser();
@@ -216,10 +229,14 @@ async function handleSignup() {
     const cred = await auth.createUserWithEmailAndPassword(email, password);
     await cred.user.sendEmailVerification();
 
+    // Write uid→username reverse-index FIRST so the users/ write passes rules
+    await db.ref("uid_to_username/" + cred.user.uid).set(username);
+
     await db.ref("users/" + username).set({
       fullName,
       username,
       email,
+      uid: cred.user.uid,
       blocked: false,
       emailVerified: false,
       createdAt: Date.now(),
@@ -1252,6 +1269,14 @@ function attachEvents() {
         state.user = { username: "admin", fullName: "Super Admin", email: "", isAdmin: true };
         persistUser();
         closeAdminGate();
+        // Sign in anonymously so Firebase Auth session exists (auth != null in rules).
+        // Requires Anonymous sign-in enabled in Firebase Console →
+        //   Authentication → Sign-in providers → Anonymous → Enable
+        auth.signInAnonymously().catch(() => {
+          // If anonymous auth isn't enabled yet, proceed anyway (rules will
+          // block writes but reads on open paths still work).
+          console.warn("Anonymous auth unavailable — enable it in Firebase Console for full rule enforcement.");
+        });
         enterApp();
       } else {
         closeAdminGate();
@@ -1464,6 +1489,7 @@ function enterApp() {
     renderAdminUsersTable();
     renderAdminStats();
     renderReportedPosts();
+    _injectAdminChatsBtn();
   } else {
     showScreen("home");
     subscribePosts();
@@ -1611,11 +1637,20 @@ function openProfileModal() {
    ===================================================================== */
 
 // ── module-level state ────────────────────────────────────────────────
-let _chatRoomID         = "";    // currently open room
-let _chatMsgListener    = null;  // Firebase ref (chats/{roomId}) — detach on close
-let _presenceListener   = null;  // Firebase ref (users/{id}/status)
-let _inboxListener      = null;  // Firebase ref (chat_rooms) for inbox list
-let _unreadBadgeListener = null; // Firebase ref (chat_rooms) for global badge
+let _chatRoomID          = "";    // currently open room
+let _chatMsgListener     = null;  // Firebase ref (chats/{roomId}) — detach on close
+let _presenceListener    = null;  // Firebase ref (users/{id}/status)
+let _inboxListener       = null;  // Firebase ref (chat_rooms) for inbox list
+let _unreadBadgeListener = null;  // Firebase ref (chat_rooms) for global badge
+// Typing indicator
+let _typingTimer         = null;  // debounce handle
+let _typingRef           = null;  // my own typing node in Firebase
+let _typingListenerRef   = null;  // listener on the other person's typing node
+// Voice recording
+let _mediaRecorder       = null;
+let _audioChunks         = [];
+let _isRecording         = false;
+let _recTimerInterval    = null;
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -1687,9 +1722,67 @@ function openChatWithUser(receiverID, receiverName, receiverPic) {
 
   // -- Presence
   _listenToPresence(receiverID);
+
+  // -- Inject extra input buttons (mic, location, attachment) & typing listener
+  _ensureChatInputUI();
+  _listenTyping(_chatRoomID, me, receiverID);
 }
 
-// Append one message bubble
+// ── Build inner HTML for a message bubble based on type ───────────────
+function _bubbleContent(msg, isMine) {
+  const type = msg.type || "text";
+
+  if (type === "audio") {
+    return `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
+      style="max-width:230px;outline:none;border-radius:8px;display:block;"></audio>`;
+  }
+
+  if (type === "location") {
+    const url = msg.locationUrl || "#";
+    const bg  = isMine ? "rgba(255,255,255,0.15)" : "#EFF6FF";
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
+      style="display:flex;align-items:center;gap:8px;padding:8px 10px;
+             background:${bg};border-radius:8px;text-decoration:none;
+             color:${isMine ? "#fff" : "#1E40AF"};">
+        <span style="font-size:22px;">📍</span>
+        <span style="font-size:13px;font-weight:600;">View Location on Map</span>
+      </a>`;
+  }
+
+  if (type === "image") {
+    return `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
+      style="max-width:220px;max-height:220px;border-radius:8px;
+             cursor:pointer;display:block;object-fit:cover;"
+      onclick="_openImageFullscreen(this.src)"
+      onerror="this.style.display='none'">`;
+  }
+
+  if (type === "document") {
+    const bg   = isMine ? "rgba(255,255,255,0.15)" : "#EFF6FF";
+    const col  = isMine ? "#fff" : "#111";
+    const link = isMine ? "#9EC5FE" : "#1E40AF";
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+                        background:${bg};border-radius:8px;">
+      <span style="font-size:26px;">📄</span>
+      <div style="min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:${col};
+                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;">
+          ${escapeHtml(msg.fileName || "Document")}
+        </div>
+        <a href="${escapeHtml(msg.fileUrl || "")}" target="_blank"
+           download="${escapeHtml(msg.fileName || "file")}"
+           style="font-size:11px;color:${link};font-weight:600;text-decoration:none;">
+           ⬇ Download
+        </a>
+      </div>
+    </div>`;
+  }
+
+  // Default: plain text
+  return escapeHtml(msg.text || "");
+}
+
+// Append one message bubble (handles all message types)
 function _appendBubble(key, msg, myID) {
   const area = document.getElementById("chat-messages-area");
   if (!area) return;
@@ -1702,6 +1795,10 @@ function _appendBubble(key, msg, myID) {
   const tick    = isMine
     ? `<span id="tick-${key}" style="font-size:10px;margin-left:4px;color:${msg.seen ? "#60A5FA" : "#aaa"};">${msg.seen ? "✓✓" : "✓"}</span>`
     : "";
+  const type    = msg.type || "text";
+  // Non-text types don't need full padding
+  const pad     = (type === "image") ? "4px" : "8px 12px";
+  const radius  = isMine ? "14px 14px 0 14px" : "14px 14px 14px 0";
 
   const w = document.createElement("div");
   w.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? "flex-end" : "flex-start"};margin-bottom:6px;`;
@@ -1709,9 +1806,11 @@ function _appendBubble(key, msg, myID) {
     <div style="
       background:${isMine ? "#1E40AF" : "#ffffff"};
       color:${isMine ? "#fff" : "#111"};
-      padding:8px 12px;border-radius:${isMine ? "14px 14px 0 14px" : "14px 14px 14px 0"};
+      padding:${pad};border-radius:${radius};
       max-width:75%;word-wrap:break-word;font-size:14px;
-      box-shadow:0 1px 2px rgba(0,0,0,0.1);">${escapeHtml(msg.text || "")}</div>
+      box-shadow:0 1px 2px rgba(0,0,0,0.1);overflow:hidden;">
+      ${_bubbleContent(msg, isMine)}
+    </div>
     <div style="font-size:10px;color:#999;margin-top:2px;">${timeStr}${tick}</div>`;
   area.appendChild(w);
 }
@@ -1740,12 +1839,14 @@ function sendMessage() {
   const text    = inputEl ? inputEl.value.trim() : "";
   if (!text) return;
 
-  const parts      = _chatRoomID.split("_");
-  const receiverID = parts[0] === me ? parts[1] : parts[0];
+  // Use state.activeChat — splitting _chatRoomID on "_" breaks for usernames with underscores
+  const receiverID = state.activeChat || "";
+  if (!receiverID) return;
 
   // Push message node
   db.ref("chats/" + _chatRoomID).push({
     senderID:  me,
+    type:      "text",
     text:      text,
     timestamp: firebase.database.ServerValue.TIMESTAMP,
     seen:      false,
@@ -1778,9 +1879,16 @@ function closeChatModal() {
 }
 
 function _closeChatListeners() {
-  if (_chatMsgListener)  { _chatMsgListener.off();  _chatMsgListener = null; }
-  if (_presenceListener) { _presenceListener.off(); _presenceListener = null; }
+  if (_chatMsgListener)   { _chatMsgListener.off();   _chatMsgListener = null; }
+  if (_presenceListener)  { _presenceListener.off();  _presenceListener = null; }
+  if (_typingListenerRef) { _typingListenerRef.off(); _typingListenerRef = null; }
+  // Clear typing status BEFORE nulling _typingRef so the write still fires
+  _clearMyTypingStatus();
+  _typingRef = null;
+  if (_typingTimer) { clearTimeout(_typingTimer); _typingTimer = null; }
+  _stopVoiceRecord();
   _chatRoomID = "";
+  state.activeChat = null;
 }
 
 /* ── Inbox overlay — fully self-contained, no HTML screen dependency ── */
@@ -2115,13 +2223,568 @@ function _listenToPresence(targetUserId) {
   _presenceListener = ref;
 
   ref.on("value", (snap) => {
-    if (!snap.exists()) { el.innerText = "offline"; el.style.color = "#999"; return; }
+    if (!snap.exists()) {
+      el.innerText = "offline"; el.style.color = "#999";
+      el._presenceText = "offline";
+      return;
+    }
     const s = snap.val();
+    let text;
     if (s.state === "online") {
-      el.innerText = "online ●"; el.style.color = "#25D366";
+      text = "online ●"; el.style.color = "#25D366";
     } else {
       el.style.color = "#999";
-      el.innerText = s.last_changed ? "last seen " + formatChatTime(s.last_changed) : "offline";
+      text = s.last_changed ? "last seen " + formatChatTime(s.last_changed) : "offline";
     }
+    // Store so typing indicator can restore it when typing stops
+    el._presenceText = text;
+    // Only update if typing indicator isn't active
+    if (el.style.fontStyle !== "italic") el.innerText = text;
+  });
+}
+
+/* =====================================================================
+   EXTENDED CHAT FEATURES
+   1. Chat toolbar injection (mic 🎤, location 📍, attachment 📎)
+   2. Typing indicator  (Firebase chats_presence/{roomId}/{userId})
+   3. Voice recording   (MediaRecorder → Firebase Storage)
+   4. Location sharing  (Geolocation → Google Maps link)
+   5. File / image attachment (Firebase Storage upload)
+   6. Image fullscreen viewer
+   7. Admin "All Conversations" overlay
+   ===================================================================== */
+
+/* ── Shared icon-button CSS string ───────────────────────────────────── */
+function _iconBtnStyle() {
+  return [
+    "background:none", "border:none", "cursor:pointer",
+    "padding:7px", "font-size:19px", "line-height:1",
+    "color:#555", "border-radius:50%", "transition:background 0.15s",
+    "flex-shrink:0",
+  ].join(";");
+}
+
+/* ── 1. Inject toolbar into chat modal (idempotent) ──────────────────── */
+function _ensureChatInputUI() {
+  if (document.getElementById("_chat-toolbar")) return; // already done
+
+  const inputEl = document.getElementById("chat-input-text");
+  if (!inputEl) return;
+  const parent = inputEl.parentElement;
+
+  // ── Toolbar div (three icon buttons)
+  const toolbar = document.createElement("div");
+  toolbar.id = "_chat-toolbar";
+  toolbar.style.cssText = "display:flex;align-items:center;gap:1px;flex-shrink:0;";
+  toolbar.innerHTML = `
+    <button id="_btn-attach" title="File ya Image bhejein" style="${_iconBtnStyle()}">📎</button>
+    <button id="_btn-loc"    title="Apni location share karein" style="${_iconBtnStyle()}">📍</button>
+    <button id="_btn-mic"    title="Voice message — click to start / stop" style="${_iconBtnStyle()}">🎤</button>`;
+
+  // ── Hidden file input
+  const fileInput = document.createElement("input");
+  fileInput.type    = "file";
+  fileInput.id      = "_chat-file-input";
+  fileInput.accept  = "image/*,application/pdf,.doc,.docx,.txt";
+  fileInput.style.display = "none";
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files[0]) _handleFileAttachment(e.target.files[0]);
+    e.target.value = "";
+  });
+
+  // ── Recording indicator bar
+  const recBar = document.createElement("div");
+  recBar.id = "_rec-bar";
+  recBar.style.cssText = [
+    "display:none", "align-items:center", "gap:8px",
+    "padding:5px 10px", "background:#FEE2E2", "border-radius:8px",
+    "font-size:12px", "color:#DC2626", "flex-shrink:0", "white-space:nowrap",
+  ].join(";");
+  recBar.innerHTML = `<span style="animation:_chatPulse 1s infinite;">🔴</span> Recording… <span id="_rec-time">0:00</span>`;
+
+  // ── Keyframe for pulsing dot (inject once)
+  if (!document.getElementById("_chat-ext-styles")) {
+    const sty = document.createElement("style");
+    sty.id = "_chat-ext-styles";
+    sty.textContent = `
+      @keyframes _chatPulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+      #_btn-mic.recording { background:#FEE2E2 !important; color:#DC2626 !important; }
+      #_upload-spinner {
+        position:absolute; bottom:64px; right:14px; background:#1E40AF;
+        color:white; border-radius:8px; padding:6px 12px;
+        font-size:12px; font-weight:600; z-index:100; display:none;
+      }
+    `;
+    document.head.appendChild(sty);
+  }
+
+  // ── Upload spinner (positioned inside chat-modal)
+  if (!document.getElementById("_upload-spinner")) {
+    const spinner = document.createElement("div");
+    spinner.id = "_upload-spinner";
+    spinner.textContent = "⏳ Uploading…";
+    const modal = document.getElementById("chat-modal");
+    if (modal) {
+      modal.style.position = "relative";
+      modal.appendChild(spinner);
+    }
+  }
+
+  // ── Insert elements: recBar | toolbar | fileInput | [existing input] | [send btn]
+  const anchor = inputEl; // insert before the text input
+  parent.insertBefore(fileInput, anchor);
+  parent.insertBefore(toolbar,   anchor);
+  parent.insertBefore(recBar,    anchor);
+
+  // ── Wire buttons
+  document.getElementById("_btn-attach").addEventListener("click", () =>
+    document.getElementById("_chat-file-input").click()
+  );
+  document.getElementById("_btn-loc").addEventListener("click", shareLocation);
+  document.getElementById("_btn-mic").addEventListener("click", _toggleVoiceRecord);
+
+  // ── Typing: add input + Enter listeners (safe even if called multiple times)
+  inputEl.removeEventListener("input",   _onTypingInput);
+  inputEl.removeEventListener("keydown", _chatEnterKey);
+  inputEl.addEventListener("input",   _onTypingInput);
+  inputEl.addEventListener("keydown", _chatEnterKey);
+}
+
+function _chatEnterKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+/* ── 2. Typing indicator ─────────────────────────────────────────────── */
+function _onTypingInput() {
+  if (!_typingRef) return;
+  _typingRef.set(true).catch(() => {});
+  if (_typingTimer) clearTimeout(_typingTimer);
+  _typingTimer = setTimeout(_clearMyTypingStatus, 2000);
+}
+
+function _clearMyTypingStatus() {
+  if (_typingRef) _typingRef.set(false).catch(() => {});
+}
+
+function _listenTyping(roomId, myID, otherID) {
+  // Detach old listener
+  if (_typingListenerRef) { _typingListenerRef.off(); _typingListenerRef = null; }
+
+  // Register my own typing node and set it to false on disconnect
+  _typingRef = db.ref("chats_presence/" + roomId + "/" + myID);
+  _typingRef.onDisconnect().set(false).catch(() => {});
+
+  // Listen to the other person's typing status
+  const ref = db.ref("chats_presence/" + roomId + "/" + otherID);
+  _typingListenerRef = ref;
+
+  ref.on("value", (snap) => {
+    const statusEl = document.getElementById("chat-user-status");
+    if (!statusEl) return;
+    if (snap.val() === true) {
+      statusEl.textContent  = "typing…";
+      statusEl.style.color  = "#25D366";
+      statusEl.style.fontStyle = "italic";
+    } else {
+      statusEl.style.fontStyle = "";
+      // Restore last-seen / online text
+      statusEl.innerText = statusEl._presenceText || "";
+    }
+  });
+}
+
+/* ── 3. Voice recording ──────────────────────────────────────────────── */
+function _toggleVoiceRecord() {
+  if (_isRecording) _stopVoiceRecord(); else _startVoiceRecord();
+}
+
+function _startVoiceRecord() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    alert("Aapka browser voice recording support nahi karta.");
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+    _audioChunks   = [];
+    const mime     = _getBestAudioMime();
+    _mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+
+    _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _audioChunks.push(e.data); };
+    _mediaRecorder.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(_audioChunks, { type: _mediaRecorder.mimeType || "audio/ogg" });
+      _uploadAudio(blob);
+      _audioChunks = [];
+    };
+
+    _mediaRecorder.start();
+    _isRecording = true;
+
+    // UI: red indicator + mic button state
+    const micBtn = document.getElementById("_btn-mic");
+    if (micBtn) micBtn.classList.add("recording");
+    const recBar = document.getElementById("_rec-bar");
+    if (recBar) recBar.style.display = "flex";
+
+    // Seconds timer
+    let secs = 0;
+    _recTimerInterval = setInterval(() => {
+      secs++;
+      const el = document.getElementById("_rec-time");
+      if (el) el.textContent = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
+      if (secs >= 120) _stopVoiceRecord(); // auto-stop at 2 min
+    }, 1000);
+
+  }).catch((err) => {
+    console.error("Microphone access error:", err);
+    alert("Microphone access nahi mila. Browser settings mein permission allow karein.");
+  });
+}
+
+function _stopVoiceRecord() {
+  if (_mediaRecorder && _isRecording) {
+    try { _mediaRecorder.stop(); } catch (_) {}
+    _isRecording = false;
+  }
+  if (_recTimerInterval) { clearInterval(_recTimerInterval); _recTimerInterval = null; }
+  const micBtn = document.getElementById("_btn-mic");
+  if (micBtn) micBtn.classList.remove("recording");
+  const recBar = document.getElementById("_rec-bar");
+  if (recBar) recBar.style.display = "none";
+  const tEl = document.getElementById("_rec-time");
+  if (tEl) tEl.textContent = "0:00";
+}
+
+function _getBestAudioMime() {
+  if (typeof MediaRecorder === "undefined") return "";
+  const types = [
+    "audio/webm;codecs=opus", "audio/ogg;codecs=opus",
+    "audio/webm", "audio/ogg", "audio/mp4",
+  ];
+  return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+function _uploadAudio(blob) {
+  if (!state.user || !_chatRoomID) return;
+  const ext  = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
+  const path = "chat_audio/" + _chatRoomID + "/" + Date.now() + "." + ext;
+
+  showToast("Voice message upload ho raha hai…", "success", 4000);
+
+  firebase.storage().ref(path).put(blob)
+    .then((snap) => snap.ref.getDownloadURL())
+    .then((url) => {
+      _pushChatMessage({ type: "audio", audioUrl: url, text: "🎤 Voice message" });
+    })
+    .catch((err) => {
+      console.error("Audio upload error:", err);
+      showToast("Upload fail. Phir try karein.", "error");
+    });
+}
+
+/* ── 4. Location sharing ─────────────────────────────────────────────── */
+function shareLocation() {
+  if (!navigator.geolocation) {
+    alert("Aapka browser location support nahi karta.");
+    return;
+  }
+  const btn = document.getElementById("_btn-loc");
+  if (btn) { btn.textContent = "⏳"; btn.disabled = true; }
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      if (btn) { btn.textContent = "📍"; btn.disabled = false; }
+      const { latitude: lat, longitude: lng } = pos.coords;
+      const url = "https://www.google.com/maps?q=" + lat + "," + lng;
+      _pushChatMessage({ type: "location", locationUrl: url, lat, lng, text: "📍 Location" });
+    },
+    (err) => {
+      if (btn) { btn.textContent = "📍"; btn.disabled = false; }
+      console.error("Geolocation error:", err);
+      alert("Location nahi mili. Browser settings mein location allow karein.");
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+/* ── 5. File / image attachment ──────────────────────────────────────── */
+function openFileAttachment() {
+  const inp = document.getElementById("_chat-file-input");
+  if (inp) inp.click();
+}
+
+function _handleFileAttachment(file) {
+  if (!state.user || !_chatRoomID) return;
+
+  const isImage = file.type.startsWith("image/");
+  const folder  = isImage ? "chat_attachments/images" : "chat_attachments/docs";
+  const path    = folder + "/" + _chatRoomID + "/" + Date.now() + "_" + file.name;
+
+  // Show spinner
+  const spinner = document.getElementById("_upload-spinner");
+  if (spinner) spinner.style.display = "block";
+
+  firebase.storage().ref(path).put(file)
+    .then((snap) => snap.ref.getDownloadURL())
+    .then((url) => {
+      if (spinner) spinner.style.display = "none";
+      if (isImage) {
+        _pushChatMessage({ type: "image", fileUrl: url, fileName: file.name, text: "🖼 Image" });
+      } else {
+        _pushChatMessage({ type: "document", fileUrl: url, fileName: file.name, text: "📄 " + file.name });
+      }
+    })
+    .catch((err) => {
+      if (spinner) spinner.style.display = "none";
+      console.error("File upload error:", err);
+      showToast("Upload fail. Phir try karein.", "error");
+    });
+}
+
+/* ── Shared helper: push any message type to Firebase ────────────────── */
+function _pushChatMessage(extra) {
+  if (!state.user || !_chatRoomID) return;
+  const me     = state.user.username;
+  const myName = state.user.fullName || me;
+
+  const msg = {
+    senderID:  me,
+    timestamp: firebase.database.ServerValue.TIMESTAMP,
+    seen:      false,
+    ...extra,
+  };
+
+  // Push message
+  db.ref("chats/" + _chatRoomID).push(msg).catch((err) => console.error("_pushChatMessage:", err));
+
+  // Use state.activeChat — splitting _chatRoomID on "_" breaks for usernames with underscores
+  const receiverID   = state.activeChat || "";
+  if (!receiverID) return;
+  const nameEl       = document.getElementById("chat-user-name");
+  const receiverName = nameEl ? nameEl.innerText : receiverID;
+
+  db.ref("chat_rooms/" + _chatRoomID).update({
+    participants:     { [me]: true, [receiverID]: true },
+    participantNames: { [me]: myName, [receiverID]: receiverName },
+    lastMessage:      extra.text || "Media",
+    lastTimestamp:    firebase.database.ServerValue.TIMESTAMP,
+  }).catch(() => {});
+
+  // Increment receiver's unread counter
+  db.ref("chat_rooms/" + _chatRoomID + "/unread/" + receiverID)
+    .transaction((c) => (c || 0) + 1).catch(() => {});
+}
+
+/* ── 6. Image fullscreen viewer ──────────────────────────────────────── */
+function _openImageFullscreen(src) {
+  let viewer = document.getElementById("_img-viewer");
+  if (!viewer) {
+    viewer = document.createElement("div");
+    viewer.id = "_img-viewer";
+    viewer.style.cssText = [
+      "position:fixed", "inset:0", "z-index:99999",
+      "background:rgba(0,0,0,0.95)", "display:none",
+      "align-items:center", "justify-content:center", "cursor:zoom-out",
+    ].join(";");
+    viewer.innerHTML = `
+      <img id="_img-viewer-img"
+        style="max-width:95vw;max-height:90vh;border-radius:4px;object-fit:contain;">
+      <button onclick="document.getElementById('_img-viewer').style.display='none'"
+        style="position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.15);
+               border:none;color:white;font-size:22px;cursor:pointer;
+               border-radius:50%;width:40px;height:40px;line-height:40px;text-align:center;">
+        ✕
+      </button>`;
+    viewer.addEventListener("click", (e) => {
+      if (e.target === viewer) viewer.style.display = "none";
+    });
+    document.body.appendChild(viewer);
+  }
+  document.getElementById("_img-viewer-img").src = src;
+  viewer.style.display = "flex";
+}
+
+/* ── 7. Admin — All Conversations overlay ────────────────────────────── */
+function _injectAdminChatsBtn() {
+  if (document.getElementById("_admin-chats-btn")) return;
+
+  const btn = document.createElement("button");
+  btn.id = "_admin-chats-btn";
+  btn.innerHTML = "💬 All Conversations";
+  btn.style.cssText = [
+    "display:inline-flex", "align-items:center", "gap:6px",
+    "margin:12px", "padding:10px 18px",
+    "background:#1E40AF", "color:white",
+    "border:none", "border-radius:8px",
+    "font-size:14px", "font-weight:600", "cursor:pointer",
+    "box-shadow:0 2px 6px rgba(30,64,175,0.3)",
+  ].join(";");
+  btn.addEventListener("click", renderAdminAllChats);
+
+  // Insert at top of admin screen, or body as fallback
+  const screen = document.getElementById("screen-admin") || document.body;
+  screen.insertBefore(btn, screen.firstChild);
+}
+
+function renderAdminAllChats() {
+  let overlay = document.getElementById("_admin-chats-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "_admin-chats-overlay";
+    overlay.style.cssText = [
+      "position:fixed", "inset:0", "z-index:9500",
+      "background:#f0f4f8", "display:none",
+      "flex-direction:column", "overflow:hidden", "font-family:inherit",
+    ].join(";");
+    overlay.innerHTML = `
+      <div style="background:#1E40AF;color:white;display:flex;align-items:center;
+                  gap:10px;padding:0 14px;height:56px;flex-shrink:0;
+                  box-shadow:0 2px 4px rgba(0,0,0,0.2);">
+        <button onclick="document.getElementById('_admin-chats-overlay').style.display='none'"
+          style="background:none;border:none;color:white;font-size:24px;
+                 cursor:pointer;padding:4px 8px 4px 0;line-height:1;">&#8592;</button>
+        <span style="font-size:17px;font-weight:700;flex:1;">All Conversations</span>
+        <span id="_admin-chats-count" style="font-size:12px;background:rgba(255,255,255,0.2);
+              border-radius:12px;padding:2px 8px;"></span>
+      </div>
+      <div id="_admin-chats-list"
+        style="flex:1;overflow-y:auto;background:white;"></div>`;
+    document.body.appendChild(overlay);
+  }
+
+  overlay.style.display = "flex";
+  const list    = document.getElementById("_admin-chats-list");
+  const countEl = document.getElementById("_admin-chats-count");
+  list.innerHTML = `<p style="text-align:center;color:#888;padding:30px;font-size:13px;">Loading…</p>`;
+
+  db.ref("chat_rooms").orderByChild("lastTimestamp").once("value").then((snap) => {
+    const rooms = [];
+    snap.forEach((child) => rooms.push({ id: child.key, ...child.val() }));
+    rooms.reverse(); // newest first
+
+    if (countEl) countEl.textContent = rooms.length + " chat" + (rooms.length !== 1 ? "s" : "");
+
+    list.innerHTML = "";
+    if (!rooms.length) {
+      list.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#aaa;font-size:14px;">Abhi tak koi chat nahi.</div>`;
+      return;
+    }
+
+    rooms.forEach((room) => {
+      const parts   = room.id.split("_");
+      const nameA   = (room.participantNames && room.participantNames[parts[0]]) || parts[0];
+      const nameB   = (room.participantNames && room.participantNames[parts[1]]) || parts[1];
+      const lastMsg = room.lastMessage || "—";
+      const lastT   = formatChatTime(room.lastTimestamp);
+      const totalUnread = room.unread
+        ? Object.values(room.unread).reduce((a, b) => a + (b || 0), 0)
+        : 0;
+
+      const row = document.createElement("div");
+      row.style.cssText = [
+        "display:flex", "align-items:center", "gap:12px",
+        "padding:13px 16px", "border-bottom:1px solid #f0f0f0",
+        "cursor:pointer", "transition:background 0.15s",
+      ].join(";");
+      row.addEventListener("mouseenter", () => { row.style.background = "#f7f9ff"; });
+      row.addEventListener("mouseleave", () => { row.style.background = ""; });
+      row.innerHTML = `
+        <div style="width:44px;height:44px;background:#EFF6FF;color:#1E40AF;border-radius:50%;
+                    display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
+          💬
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+            <span style="font-weight:700;font-size:14px;color:#111;">
+              ${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)}
+            </span>
+            <span style="font-size:11px;color:#aaa;flex-shrink:0;">${lastT}</span>
+          </div>
+          <div style="font-size:12px;color:#666;margin-top:2px;overflow:hidden;
+                      text-overflow:ellipsis;white-space:nowrap;">
+            ${escapeHtml(lastMsg)}
+          </div>
+        </div>
+        ${totalUnread > 0
+          ? `<span style="background:#EF4444;color:white;border-radius:12px;
+                          padding:2px 8px;font-size:11px;font-weight:bold;flex-shrink:0;">
+               ${totalUnread}
+             </span>`
+          : ""}`;
+
+      row.addEventListener("click", () => {
+        overlay.style.display = "none";
+        _openAdminChatRoom(room.id, nameA, nameB);
+      });
+      list.appendChild(row);
+    });
+  }).catch((err) => {
+    console.error("Admin all chats error:", err);
+    list.innerHTML = `<p style="color:red;text-align:center;padding:24px;font-size:13px;">Load fail. Phir try karein.</p>`;
+  });
+}
+
+// Admin: read-only message history for a specific room
+function _openAdminChatRoom(roomId, nameA, nameB) {
+  let viewer = document.getElementById("_admin-room-viewer");
+  if (!viewer) {
+    viewer = document.createElement("div");
+    viewer.id = "_admin-room-viewer";
+    viewer.style.cssText = [
+      "position:fixed", "inset:0", "z-index:9600",
+      "background:#f0f4f8", "display:none",
+      "flex-direction:column", "overflow:hidden", "font-family:inherit",
+    ].join(";");
+    document.body.appendChild(viewer);
+  }
+
+  viewer.innerHTML = `
+    <div style="background:#1E40AF;color:white;display:flex;align-items:center;
+                gap:10px;padding:0 14px;height:56px;flex-shrink:0;">
+      <button onclick="
+          document.getElementById('_admin-room-viewer').style.display='none';
+          document.getElementById('_admin-chats-overlay').style.display='flex';"
+        style="background:none;border:none;color:white;font-size:24px;
+               cursor:pointer;padding:4px 8px 4px 0;line-height:1;">&#8592;</button>
+      <div>
+        <div style="font-size:14px;font-weight:700;">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)}</div>
+        <div style="font-size:11px;opacity:0.75;">Read-only — Admin view</div>
+      </div>
+    </div>
+    <div id="_admin-room-msgs"
+      style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;
+             gap:8px;background:#f5f7fb;">
+      <p style="text-align:center;color:#888;font-size:13px;">Loading messages…</p>
+    </div>`;
+  viewer.style.display = "flex";
+
+  const msgBox = document.getElementById("_admin-room-msgs");
+  db.ref("chats/" + roomId).orderByChild("timestamp").once("value").then((snap) => {
+    msgBox.innerHTML = "";
+    if (!snap.exists()) {
+      msgBox.innerHTML = `<p style="text-align:center;color:#aaa;font-size:13px;">Koi message nahi.</p>`;
+      return;
+    }
+    const parts = roomId.split("_");
+    snap.forEach((child) => {
+      const msg    = child.val();
+      const isMine = msg.senderID === parts[0]; // arbitrary: first user = "left"
+      const bubble = document.createElement("div");
+      bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? "flex-end" : "flex-start"};`;
+      bubble.innerHTML = `
+        <div style="font-size:10px;color:#999;margin-bottom:3px;">
+          ${escapeHtml(msg.senderID)} · ${formatChatTime(msg.timestamp)}
+          ${msg.seen ? '<span style="color:#60A5FA;"> ✓✓</span>' : ""}
+        </div>
+        <div style="background:${isMine ? "#DBEAFE" : "white"};padding:8px 12px;
+                    border-radius:${isMine ? "14px 14px 0 14px" : "14px 14px 14px 0"};
+                    max-width:72%;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,0.08);
+                    overflow:hidden;">
+          ${_bubbleContent(msg, isMine)}
+        </div>`;
+      msgBox.appendChild(bubble);
+    });
+    msgBox.scrollTop = msgBox.scrollHeight;
+  }).catch(() => {
+    msgBox.innerHTML = `<p style="color:red;text-align:center;font-size:13px;">Load fail.</p>`;
   });
 }

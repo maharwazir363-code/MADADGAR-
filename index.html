@@ -390,17 +390,14 @@
           <div style="width: 36px"></div>
         </div>
       </header>
+      <!--
+        FIX: Only ONE chat history container exists — created dynamically by
+        renderAdminUser() inside #admin-user-content.
+        The old static #admin-user-messages-section has been removed to prevent
+        the duplicate "User Chat History (Admin View)" that caused the spinner to
+        get stuck (getElementById found the wrong container first).
+      -->
       <div id="admin-user-content"></div>
-              <!-- Control Panel / Admin User Detail ke andar ye box lagaya hai -->
-        <div id="admin-user-messages-section" style="margin: 15px 0; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-top: 4px solid #075E54;">
-            <h3 style="margin-top: 0; color: #075E54; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px;">📋 User Chat History (Admin View)</h3>
-            
-            <!-- Is container ke andar saari chats load hongi -->
-            <div id="admin-user-messages-container" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 5px;">
-                <p style="color: #888; font-style: italic; font-size: 13px;">Chat history load ho rahi hai...</p>
-            </div>
-        </div>
-
     </section>
 
     <!-- ===================== ADD POST MODAL ===================== -->
@@ -642,28 +639,31 @@
 
     </div>
 </div>
-        <!-- 💬 ===================== VIP CHAT MODAL (WHATSAPP STYLE) ===================== -->
+
+    <!-- 💬 ===================== VIP CHAT MODAL (WHATSAPP STYLE) ===================== -->
     <div id="chat-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1001; justify-content: center; align-items: center; font-family: Arial, sans-serif;">
         <div style="background-color: #f0f2f5; width: 90%; max-width: 450px; height: 80vh; border-radius: 15px; display: flex; flex-direction: column; overflow: hidden; position: relative; box-shadow: 0px 5px 15px rgba(0,0,0,0.3);">
             <!-- Chat Header -->
             <div style="background-color: #1E40AF; color: white; padding: 15px; display: flex; align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center;">
                     <img id="chat-user-pic" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" style="width: 35px; height: 35px; border-radius: 50%; margin-right: 10px; border: 1px solid white;">
-                    <h4 id="chat-user-name" style="margin: 0; font-size: 16px;">Loading...</h4>
+                    <!-- FIX: chat-user-status moved here so it appears inside the header -->
+                    <div>
+                        <h4 id="chat-user-name" style="margin: 0; font-size: 16px; line-height: 1.2;">Loading...</h4>
+                        <div id="chat-user-status" style="font-size: 11px; color: rgba(255,255,255,0.75); font-weight: normal; margin-top: 2px;">offline</div>
+                    </div>
                 </div>
-              <span onclick="closeChatModal()" style="font-size: 22px; cursor: pointer;">&times;</span>
-
+                <span onclick="closeChatModal()" style="font-size: 22px; cursor: pointer;">&times;</span>
             </div>
             <!-- Messages Area -->
             <div id="chat-messages-area" style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
-            <!-- Input Area -->
+            <!-- Input Area — JS (_ensureChatInputUI) injects 📎 📍 🎤 toolbar before the text input -->
             <div style="background-color: white; padding: 10px; display: flex; align-items: center; gap: 8px; border-top: 1px solid #ddd;">
                 <input type="text" id="chat-input-text" placeholder="Type a message..." style="flex: 1; padding: 10px 15px; border: 1px solid #ccc; border-radius: 20px; outline: none; font-size: 14px;">
                 <button onclick="sendMessage()" style="background-color: #1E40AF; color: white; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-weight: bold;">➔</button>
             </div>
         </div>
     </div>
-    <div id="chat-user-status" style="font-size: 11px; color: #ddd; font-weight: normal; margin-top: 2px;">offline</div>
 
     <!-- ==================== INBOX / MESSAGES SCREEN ==================== -->
 <section class="screen" id="chat-history-screen" style="display: none; padding: 15px; background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">

@@ -1018,8 +1018,8 @@ function renderAdminUser() {
       <h3 style="margin-top: 0; color: #075E54; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
         📋 User Chat History (Admin View)
       </h3>
-      <div id="admin-user-messages-container" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 5px;">
-        <p style="color: #888; font-style: italic; font-size: 13px;">⏳ Chat history load ho rahi hai...</p>
+      <div id="admin-user-messages-container" style="max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 0; padding: 0;">
+        <p style="color: #888; font-style: italic; font-size: 13px; padding: 8px;">⏳ Chat history load ho rahi hai...</p>
       </div>
     </div>`;
 
@@ -2139,20 +2139,76 @@ function listenForChatNotifications() {
   });
 }
 
-/* ── Admin: full chat log for a specific user ────────────────────────── */
+/* ── Admin: chat directory for a specific user ───────────────────────────
+   Shows a WhatsApp-style contact list first.
+   Clicking any contact expands the full inline message thread (text,
+   images, audio, documents, location) without leaving the screen.
+   ──────────────────────────────────────────────────────────────────────── */
 function loadUserChatsInAdmin(targetUserId) {
   const container = document.getElementById("admin-user-messages-container");
   if (!container) return;
 
   container.innerHTML = `
-    <div style="text-align:center;padding:14px 0;color:#15803d;font-size:13px;">
+    <div style="text-align:center;padding:14px 0;color:#075E54;font-size:13px;">
       ⏳ Chat history load ho rahi hai...
     </div>`;
 
-  // ── Wait for Firebase Auth to be ready before querying ───────────────
-  // This prevents PERMISSION_DENIED when admin just logged in anonymously
+  /* ── helper: render a single message bubble ─────────────────────────── */
+  function _renderBubble(msg, myName, otherName) {
+    const isTarget    = msg.senderID === targetUserId;
+    const senderLabel = escapeHtml(isTarget ? myName : otherName);
+    const timeStr     = formatChatTime(msg.timestamp);
+    const seenTick    = isTarget
+      ? (msg.seen
+          ? " <span style='color:#3b82f6;font-size:10px;'>✓✓</span>"
+          : " <span style='color:#9ca3af;font-size:10px;'>✓</span>")
+      : "";
+
+    const type = msg.type || "text";
+    let content = "";
+    if (type === "audio") {
+      content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
+        style="max-width:180px;outline:none;border-radius:8px;display:block;"></audio>`;
+    } else if (type === "location") {
+      content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank"
+        style="display:flex;align-items:center;gap:5px;color:${isTarget ? "#93c5fd" : "#047857"};
+               font-size:12px;text-decoration:none;">
+        📍 <span style="font-weight:600;">View on Map</span></a>`;
+    } else if (type === "image") {
+      content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
+        style="max-width:140px;max-height:140px;border-radius:6px;object-fit:cover;
+               display:block;cursor:zoom-in;"
+        onclick="_openImageFullscreen(this.src)"
+        onerror="this.style.display='none'">`;
+    } else if (type === "document") {
+      const dh = escapeHtml(msg.fileUrl || "");
+      const dn = escapeHtml(msg.fileName || "Document");
+      content = `<span style="font-size:12px;">📄 <a href="${dh}" target="_blank"
+        download="${dn}" style="color:${isTarget ? "#93c5fd" : "#047857"};">${dn}</a></span>`;
+    } else {
+      content = `<span style="font-size:13px;">${escapeHtml(msg.text || "")}</span>`;
+    }
+
+    const bubble = document.createElement("div");
+    bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isTarget ? "flex-end" : "flex-start"};margin-bottom:4px;`;
+    bubble.innerHTML = `
+      <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">${senderLabel} · ${timeStr}${seenTick}</div>
+      <div style="
+        background:${isTarget ? "#1e40af" : "white"};
+        color:${isTarget ? "#fff" : "#111"};
+        padding:7px 11px;
+        border-radius:${isTarget ? "12px 12px 2px 12px" : "12px 12px 12px 2px"};
+        max-width:75%;font-size:13px;
+        box-shadow:0 1px 2px rgba(0,0,0,0.08);
+        word-break:break-word;overflow:hidden;">
+        ${content}
+      </div>`;
+    return bubble;
+  }
+
+  /* ── core load ──────────────────────────────────────────────────────── */
   function _doLoad() {
-    // ── Step 1: query chat_rooms index ───────────────────────────────────
+    // Step 1: query chat_rooms index
     db.ref("chat_rooms").once("value").then((snap) => {
       const rooms = [];
       snap.forEach((child) => {
@@ -2161,27 +2217,25 @@ function loadUserChatsInAdmin(targetUserId) {
           rooms.push({ id: child.key, ...r });
       });
 
-      // ── Step 2: fallback — scan chats/ node if index has no matches ─────
+      // Step 2: fallback — scan chats/ node
       if (rooms.length === 0) {
         return db.ref("chats").once("value").then((chatsSnap) => {
-          const extraRooms = [];
+          const extra = [];
           chatsSnap.forEach((roomSnap) => {
-            // Only include rooms where targetUserId is part of the room key
-            const roomKey = roomSnap.key || "";
-            if (roomKey.includes(targetUserId)) {
-              extraRooms.push({ id: roomSnap.key });
+            const key = roomSnap.key || "";
+            if (key.includes(targetUserId)) {
+              extra.push({ id: roomSnap.key });
             } else {
-              // Scan messages as final fallback
               let found = false;
               roomSnap.forEach((msgSnap) => {
                 if (!found && msgSnap.val().senderID === targetUserId) {
                   found = true;
-                  extraRooms.push({ id: roomSnap.key });
+                  extra.push({ id: roomSnap.key });
                 }
               });
             }
           });
-          return extraRooms;
+          return extra;
         });
       }
       return rooms;
@@ -2196,13 +2250,12 @@ function loadUserChatsInAdmin(targetUserId) {
         return;
       }
 
-      container.innerHTML = ""; // clear loading indicator
+      container.innerHTML = ""; // clear spinner
 
-      // ── Step 3: fetch ALL messages for each room in parallel ─────────────
+      // Step 3: build contact directory — one card per room
       const fetches = rooms.map((room) =>
         db.ref("chats/" + room.id).once("value").then((msgSnap) => {
 
-          // Resolve participant names from index, falling back to room key parts
           const names     = room.participantNames || {};
           const roomParts = room.id.split("_");
           const otherID   = Object.keys(names).find((k) => k !== targetUserId)
@@ -2217,37 +2270,92 @@ function loadUserChatsInAdmin(targetUserId) {
             messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
           }
 
-          // ── Room card ───────────────────────────────────────────────────
-          const card = document.createElement("div");
-          card.style.cssText = [
-            "background:white", "border:1px solid #bbf7d0",
-            "border-radius:10px", "overflow:hidden",
-            "margin-bottom:12px",
-            "box-shadow:0 1px 4px rgba(34,197,94,0.1)",
+          const lastMsg  = messages.length ? messages[messages.length - 1] : null;
+          const lastText = lastMsg
+            ? (lastMsg.type === "audio"    ? "🎤 Voice note"
+             : lastMsg.type === "image"    ? "🖼 Image"
+             : lastMsg.type === "document" ? "📄 " + (lastMsg.fileName || "File")
+             : lastMsg.type === "location" ? "📍 Location"
+             : lastMsg.text || "…")
+            : "Koi message nahi";
+          const lastTime = lastMsg ? formatChatTime(lastMsg.timestamp) : "";
+          const initial  = (otherName.charAt(0) || "?").toUpperCase();
+
+          /* ── Contact row (always visible) ──────────────────────────── */
+          const row = document.createElement("div");
+          row.style.cssText = [
+            "display:flex", "align-items:center", "gap:10px",
+            "padding:10px 12px", "cursor:pointer",
+            "border-bottom:1px solid #f0fdf4",
+            "background:white", "transition:background 0.12s",
+            "user-select:none",
+          ].join(";");
+          row.onmouseover = () => { row.style.background = "#f0fdf4"; };
+          row.onmouseout  = () => { row.style.background = "white"; };
+
+          const arrowSpan = document.createElement("span");
+          arrowSpan.textContent = "▶";
+          arrowSpan.style.cssText = "font-size:11px;color:#aaa;flex-shrink:0;";
+
+          row.innerHTML = `
+            <div style="width:40px;height:40px;border-radius:50%;background:#075E54;
+                         color:white;display:flex;align-items:center;justify-content:center;
+                         font-weight:700;font-size:17px;flex-shrink:0;">
+              ${escapeHtml(initial)}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:13px;color:#111;white-space:nowrap;
+                           overflow:hidden;text-overflow:ellipsis;">${escapeHtml(otherName)}</div>
+              <div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;
+                           text-overflow:ellipsis;">${escapeHtml(lastText)}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;">
+              <span style="font-size:10px;color:#aaa;">${lastTime}</span>
+            </div>`;
+          row.appendChild(arrowSpan);
+
+          /* ── Thread panel (collapsed by default) ───────────────────── */
+          const thread = document.createElement("div");
+          thread.style.cssText = "display:none;";
+
+          // Thread header (green bar with back chevron)
+          const threadHdr = document.createElement("div");
+          threadHdr.style.cssText = [
+            "display:flex", "align-items:center", "gap:8px",
+            "padding:8px 12px", "background:#075E54", "color:white",
           ].join(";");
 
-          // Header
-          const header = document.createElement("div");
-          header.style.cssText = [
-            "background:#dcfce7", "padding:8px 12px",
-            "display:flex", "align-items:center", "justify-content:space-between",
-            "border-bottom:1px solid #bbf7d0",
+          const backBtn = document.createElement("button");
+          backBtn.innerHTML = "← Wapas";
+          backBtn.style.cssText = [
+            "background:none", "border:none", "color:white",
+            "font-size:12px", "font-weight:600", "cursor:pointer",
+            "padding:0", "flex-shrink:0",
           ].join(";");
-          header.innerHTML = `
-            <span style="font-size:13px;font-weight:700;color:#15803d;">
-              💬 ${escapeHtml(myName)} ↔ ${escapeHtml(otherName)}
-            </span>
-            <span style="font-size:11px;color:#6b7280;background:#f0fdf4;
-                         border-radius:10px;padding:2px 8px;">
-              ${messages.length} message${messages.length !== 1 ? "s" : ""}
-            </span>`;
-          card.appendChild(header);
+          backBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            thread.style.display = "none";
+            arrowSpan.textContent = "▶";
+          });
 
-          // Messages area
+          const hdrLabel = document.createElement("span");
+          hdrLabel.style.cssText = "font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+          hdrLabel.textContent = myName + " ↔ " + otherName;
+
+          const countBadge = document.createElement("span");
+          countBadge.style.cssText = "font-size:10px;opacity:0.75;flex-shrink:0;";
+          countBadge.textContent   = messages.length + " msgs";
+
+          threadHdr.appendChild(backBtn);
+          threadHdr.appendChild(hdrLabel);
+          threadHdr.appendChild(countBadge);
+          thread.appendChild(threadHdr);
+
+          // Messages scroll area
           const msgArea = document.createElement("div");
           msgArea.style.cssText = [
-            "display:flex", "flex-direction:column", "gap:6px",
-            "padding:10px 12px", "max-height:300px", "overflow-y:auto",
+            "display:flex", "flex-direction:column",
+            "padding:10px 12px", "max-height:280px", "overflow-y:auto",
             "background:#fafafa",
           ].join(";");
 
@@ -2255,70 +2363,34 @@ function loadUserChatsInAdmin(targetUserId) {
             msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:8px 0;">Koi message nahi.</p>`;
           } else {
             messages.forEach((msg) => {
-              const isTarget    = msg.senderID === targetUserId;
-              const senderLabel = escapeHtml(isTarget ? myName : otherName);
-              const timeStr     = formatChatTime(msg.timestamp);
-              const seenTick    = isTarget
-                ? (msg.seen
-                    ? " <span style='color:#3b82f6;'>✓✓</span>"
-                    : " <span style='color:#9ca3af;'>✓</span>")
-                : "";
-
-              const bubble = document.createElement("div");
-              bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isTarget ? "flex-end" : "flex-start"};`;
-
-              // Render bubble content by type
-              const type = msg.type || "text";
-              let content = "";
-              if (type === "audio") {
-                content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
-                  style="max-width:200px;outline:none;border-radius:8px;display:block;"></audio>`;
-              } else if (type === "location") {
-                content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank"
-                  style="display:flex;align-items:center;gap:6px;color:${isTarget ? "#1d4ed8" : "#059669"};
-                         font-size:12px;text-decoration:none;">
-                  📍 <span style="font-weight:600;">View Location on Map</span>
-                </a>`;
-              } else if (type === "image") {
-                content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
-                  style="max-width:160px;max-height:160px;border-radius:6px;object-fit:cover;display:block;"
-                  onerror="this.style.display='none'">`;
-              } else if (type === "document") {
-                const docHref = escapeHtml(msg.fileUrl || "");
-                const docName = escapeHtml(msg.fileName || "Document");
-                content = `<span style="font-size:12px;">📄 
-                  <a href="${docHref}" target="_blank" download="${docName}"
-                     style="color:${isTarget ? "#93c5fd" : "#047857"};">${docName}</a>
-                </span>`;
-              } else {
-                content = `<span style="font-size:13px;">${escapeHtml(msg.text || "")}</span>`;
-              }
-
-              bubble.innerHTML = `
-                <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">
-                  ${senderLabel} · ${timeStr}${seenTick}
-                </div>
-                <div style="
-                  background:${isTarget ? "#1e40af" : "white"};
-                  color:${isTarget ? "#fff" : "#111"};
-                  padding:7px 11px;
-                  border-radius:${isTarget ? "12px 12px 2px 12px" : "12px 12px 12px 2px"};
-                  max-width:75%;font-size:13px;
-                  box-shadow:0 1px 2px rgba(0,0,0,0.08);
-                  overflow:hidden;word-break:break-word;">
-                  ${content}
-                </div>`;
-              msgArea.appendChild(bubble);
+              msgArea.appendChild(_renderBubble(msg, myName, otherName));
             });
-            // Auto-scroll to latest message
-            setTimeout(() => { msgArea.scrollTop = msgArea.scrollHeight; }, 30);
           }
+          thread.appendChild(msgArea);
 
-          card.appendChild(msgArea);
+          // Toggle on row click
+          row.addEventListener("click", () => {
+            const opening = thread.style.display === "none";
+            thread.style.display = opening ? "block" : "none";
+            arrowSpan.textContent = opening ? "▼" : "▶";
+            if (opening) setTimeout(() => { msgArea.scrollTop = msgArea.scrollHeight; }, 40);
+          });
+
+          /* ── Wrap in card ─────────────────────────────────────────── */
+          const card = document.createElement("div");
+          card.style.cssText = [
+            "border:1px solid #d1fae5",
+            "border-radius:10px",
+            "overflow:hidden",
+            "margin-bottom:8px",
+            "box-shadow:0 1px 3px rgba(0,0,0,0.05)",
+          ].join(";");
+          card.appendChild(row);
+          card.appendChild(thread);
           container.appendChild(card);
 
         }).catch((err) => {
-          console.warn("Room messages load error:", room.id, err.message);
+          console.warn("Room load error:", room.id, err.message);
         })
       );
 
@@ -2332,18 +2404,18 @@ function loadUserChatsInAdmin(targetUserId) {
       });
 
     }).catch((err) => {
-      console.error("loadUserChatsInAdmin fetch error:", err);
-      const isPermDenied = err && (err.code === "PERMISSION_DENIED" || (err.message || "").includes("permission"));
+      console.error("loadUserChatsInAdmin error:", err);
+      const isPerm = err && (err.code === "PERMISSION_DENIED" || (err.message || "").includes("permission"));
       container.innerHTML = `
         <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
           ⚠️ Chat history load nahi hui.<br>
           <span style="font-size:11px;color:#9ca3af;">
-            ${isPermDenied
-              ? "Firebase rules: Firebase Console → Authentication → Sign-in providers → Anonymous signin enable karein."
+            ${isPerm
+              ? "Firebase Console → Authentication → Sign-in providers → Anonymous signin enable karein."
               : "Internet ya Firebase connection check karein."}
-          </span>
-          <br><button onclick="loadUserChatsInAdmin('${escapeHtml(targetUserId)}')"
-            style="margin-top:8px;padding:6px 14px;background:#1e40af;color:white;
+          </span><br>
+          <button onclick="loadUserChatsInAdmin('${escapeHtml(targetUserId)}')"
+            style="margin-top:8px;padding:6px 14px;background:#075E54;color:white;
                    border:none;border-radius:6px;font-size:12px;cursor:pointer;">
             ↺ Dobara Try Karein
           </button>
@@ -2356,13 +2428,11 @@ function loadUserChatsInAdmin(targetUserId) {
   if (currentUser) {
     _doLoad();
   } else {
-    // Wait for auth state to resolve (max 5s) then load
     const unsub = auth.onAuthStateChanged((user) => {
       unsub();
       if (user) {
         _doLoad();
       } else {
-        // Sign in anonymously as fallback
         auth.signInAnonymously()
           .then(() => _doLoad())
           .catch(() => {

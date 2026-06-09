@@ -1657,6 +1657,7 @@ let _chatMsgListener     = null;  // Firebase ref (chats/{roomId}) — detach on
 let _presenceListener    = null;  // Firebase ref (users/{id}/status)
 let _inboxListener       = null;  // Firebase ref (chat_rooms) for inbox list
 let _unreadBadgeListener = null;  // Firebase ref (chat_rooms) for global badge
+let _adminThreadRef      = null;  // Active real-time listener for admin thread view
 // Typing indicator
 let _typingTimer         = null;  // debounce handle
 let _typingRef           = null;  // my own typing node in Firebase
@@ -2332,12 +2333,6 @@ function loadUserChatsInAdmin(targetUserId) {
             "font-size:12px", "font-weight:600", "cursor:pointer",
             "padding:0", "flex-shrink:0",
           ].join(";");
-          backBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            thread.style.display = "none";
-            arrowSpan.textContent = "▶";
-          });
-
           const hdrLabel = document.createElement("span");
           hdrLabel.style.cssText = "font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
           hdrLabel.textContent = myName + " ↔ " + otherName;
@@ -2351,29 +2346,72 @@ function loadUserChatsInAdmin(targetUserId) {
           threadHdr.appendChild(countBadge);
           thread.appendChild(threadHdr);
 
-          // Messages scroll area
+          // Messages scroll area — filled by live .on("child_added"), not a one-time fetch
           const msgArea = document.createElement("div");
           msgArea.style.cssText = [
             "display:flex", "flex-direction:column",
             "padding:10px 12px", "max-height:280px", "overflow-y:auto",
             "background:#fafafa",
           ].join(";");
-
-          if (!messages.length) {
-            msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;margin:8px 0;">Koi message nahi.</p>`;
-          } else {
-            messages.forEach((msg) => {
-              msgArea.appendChild(_renderBubble(msg, myName, otherName));
-            });
-          }
           thread.appendChild(msgArea);
 
-          // Toggle on row click
+          // ── Per-room live listener helpers ───────────────────────────────
+          function _openThread() {
+            // Detach any previously active thread listener (only one live at a time)
+            if (_adminThreadRef) {
+              try { _adminThreadRef.off("child_added"); } catch (_) {}
+              _adminThreadRef = null;
+            }
+            // Clear area and show loading placeholder
+            msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;padding:10px 0;">⏳ Loading messages...</p>`;
+            let msgCount = 0;
+            const roomRef = db.ref("chats/" + room.id);
+            _adminThreadRef = roomRef;
+
+            roomRef.on("child_added", (snap) => {
+              // Remove loading / empty placeholder on first child
+              const placeholder = msgArea.querySelector("p");
+              if (placeholder) placeholder.remove();
+              const msg = { key: snap.key, ...snap.val() };
+              msgArea.appendChild(_renderBubble(msg, myName, otherName));
+              msgCount++;
+              countBadge.textContent = msgCount + " msg" + (msgCount !== 1 ? "s" : "");
+              // Auto-scroll to the newest message
+              requestAnimationFrame(() => { msgArea.scrollTop = msgArea.scrollHeight; });
+            }, (err) => {
+              console.warn("Admin live thread error:", room.id, err.message);
+            });
+          }
+
+          function _closeThread() {
+            if (_adminThreadRef) {
+              try { _adminThreadRef.off("child_added"); } catch (_) {}
+              _adminThreadRef = null;
+            }
+            msgArea.innerHTML = "";
+            countBadge.textContent = messages.length + " msgs";
+          }
+
+          // Back button — detach live listener and collapse thread
+          backBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            _closeThread();
+            thread.style.display = "none";
+            arrowSpan.textContent = "▶";
+          });
+
+          // Row click — open attaches live listener, close detaches it
           row.addEventListener("click", () => {
             const opening = thread.style.display === "none";
-            thread.style.display = opening ? "block" : "none";
-            arrowSpan.textContent = opening ? "▼" : "▶";
-            if (opening) setTimeout(() => { msgArea.scrollTop = msgArea.scrollHeight; }, 40);
+            if (opening) {
+              thread.style.display = "block";
+              arrowSpan.textContent = "▼";
+              _openThread();
+            } else {
+              _closeThread();
+              thread.style.display = "none";
+              arrowSpan.textContent = "▶";
+            }
           });
 
           /* ── Wrap in card ─────────────────────────────────────────── */

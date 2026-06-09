@@ -639,11 +639,7 @@ function renderHome() {
   if (!list) return;
 
   if (!state.postsLoaded) {
-    list.innerHTML = `
-      <div class="loading-block">
-        <div class="spinner"></div>
-        <p class="muted small">Madadgar App loading...</p>
-      </div>`;
+    list.innerHTML = _skeletonPostCards(3);
     return;
   }
 
@@ -869,11 +865,7 @@ function renderAdminUsersTable() {
   if (!body) return;
 
   if (!state.usersLoaded) {
-    body.innerHTML = `
-      <div class="loading-block">
-        <div class="spinner"></div>
-        <p class="muted small">Users load ho rahe hain...</p>
-      </div>`;
+    body.innerHTML = _skeletonUserRows(4);
     return;
   }
   if (state.usersError) {
@@ -1510,7 +1502,63 @@ function enterApp() {
   }
 }
 
+/* ── Dark mode — persisted preference ───────────────────────────────── */
+function initDarkMode() {
+  const saved = localStorage.getItem("madadgar_theme") || "light";
+  const btn   = document.getElementById("theme-toggle-btn");
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+    localStorage.setItem("madadgar_theme", theme);
+  }
+
+  applyTheme(saved);
+
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const cur = document.documentElement.getAttribute("data-theme") || "light";
+      applyTheme(cur === "dark" ? "light" : "dark");
+    });
+  }
+}
+
+/* ── Skeleton loader HTML helpers ───────────────────────────────────── */
+function _skeletonPostCards(n) {
+  n = n || 3;
+  return Array.from({ length: n }, () => `
+    <div class="skel-card">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+        <div class="skel" style="width:70px;height:10px;"></div>
+        <div class="skel" style="width:50px;height:10px;"></div>
+      </div>
+      <div class="skel skel-line lg" style="width:85%;"></div>
+      <div class="skel skel-line" style="width:65%;"></div>
+      <div class="skel skel-line" style="width:75%;"></div>
+      <div class="skel-actions">
+        <div class="skel skel-btn"></div>
+        <div class="skel skel-btn"></div>
+        <div class="skel skel-btn"></div>
+      </div>
+    </div>`).join("");
+}
+
+function _skeletonUserRows(n) {
+  n = n || 4;
+  return Array.from({ length: n }, () => `
+    <div class="skel-row">
+      <div class="skel skel-avatar"></div>
+      <div class="skel-row-body">
+        <div class="skel skel-row-line" style="width:60%;"></div>
+        <div class="skel skel-row-line"></div>
+      </div>
+      <div class="skel" style="width:36px;height:20px;flex-shrink:0;border-radius:6px;"></div>
+      <div class="skel skel-btn" style="width:72px;flex-shrink:0;border-radius:8px;"></div>
+    </div>`).join("");
+}
+
 function init() {
+  initDarkMode();
   attachEvents();
   state.user = loadPersistedUser();
   if (state.user) {
@@ -1719,7 +1767,7 @@ function openChatWithUser(receiverID, receiverName, receiverPic) {
 
   msgsRef.on("child_added", (snap) => {
     _appendBubble(snap.key, snap.val(), me);
-    if (area) area.scrollTop = area.scrollHeight;
+    if (area) area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
   });
 
   // -- child_changed: update blue tick when our sent message becomes seen

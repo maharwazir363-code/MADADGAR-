@@ -1501,7 +1501,8 @@ function _showWelcomeOverlay(onDone) {
     ">WELCOME<br>MAHAR SHOAIB<br>
     <span style='font-size:0.62em;letter-spacing:5px;'>THE KING OF TECHNOLOGY</span></div>
     <div style="position:relative;z-index:1;">
-      <img src="shoaib.jpg" alt="Shoaib"
+      <img src="./shoaib.jpg" alt="Shoaib"
+      
         id="_welcome-pic"
         style="
           width:116px;height:116px;border-radius:50%;object-fit:cover;display:block;

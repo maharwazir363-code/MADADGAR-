@@ -1724,3 +1724,105 @@ body,
 }
 .block-big-btn:hover  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
 .block-big-btn:active { transform: scale(0.97); }
+
+/* ================================================================
+   SEARCH INPUTS — pill-shaped, refined
+   ================================================================ */
+.search-box {
+  border-radius: 24px;
+  padding: 10px 16px;
+  border: 1.5px solid var(--border);
+  box-shadow: 0 1px 4px rgba(15,23,42,0.06);
+  background: var(--card, #fff);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, var(--transition-theme, none);
+}
+.search-box:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(30,64,175,0.08), 0 1px 4px rgba(15,23,42,0.06);
+}
+[data-theme="dark"] .search-box:focus-within {
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
+}
+
+/* ================================================================
+   EMPTY STATE CARD — premium look
+   ================================================================ */
+.empty-block {
+  text-align: center;
+  margin: 20px 16px;
+  padding: 52px 28px 44px;
+  background: var(--card, #fff);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(15,23,42,0.07);
+  color: var(--muted);
+  transition: var(--transition-theme, none);
+}
+.empty-block .big {
+  font-size: 52px;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 4px 8px rgba(30,64,175,0.15));
+}
+.empty-block .title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 6px 0;
+}
+.empty-block p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+[data-theme="dark"] .empty-block {
+  background: var(--card);
+  border-color: var(--border);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+}
+
+/* ================================================================
+   POST CARD — subtle left accent + refined hover
+   ================================================================ */
+.post-card {
+  border-left: 3px solid transparent;
+  transition: border-color 0.2s ease, box-shadow 0.18s ease,
+              transform 0.12s ease, var(--transition-theme, none);
+}
+.post-card:hover {
+  border-left-color: var(--primary);
+  box-shadow: 0 3px 14px rgba(30,64,175,0.10);
+  transform: translateY(-1px);
+}
+[data-theme="dark"] .post-card:hover {
+  border-left-color: var(--primary);
+  box-shadow: 0 3px 14px rgba(96,165,250,0.12);
+}
+
+/* ================================================================
+   FAB (+) — richer glow, micro-scale on press
+   ================================================================ */
+.fab {
+  box-shadow: 0 4px 16px rgba(30,64,175,0.40),
+              0 0 0 0 rgba(30,64,175,0.25);
+}
+.fab:hover {
+  box-shadow: 0 8px 28px rgba(30,64,175,0.52),
+              0 0 0 6px rgba(30,64,175,0.08);
+}
+[data-theme="dark"] .fab {
+  box-shadow: 0 4px 16px rgba(96,165,250,0.28),
+              0 0 0 0 rgba(96,165,250,0.15);
+}
+[data-theme="dark"] .fab:hover {
+  box-shadow: 0 8px 28px rgba(96,165,250,0.38),
+              0 0 0 6px rgba(96,165,250,0.1);
+}
+
+/* ================================================================
+   TOAST — warn (offline) variant
+   ================================================================ */
+.toast.warn {
+  background: #7c2d12;
+  border-left: 3px solid #f97316;
+}

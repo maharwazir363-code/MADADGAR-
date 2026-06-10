@@ -1271,17 +1271,13 @@ function attachEvents() {
         state.user = { username: "admin", fullName: "Super Admin", email: "", isAdmin: true };
         persistUser();
         closeAdminGate();
-        // Sign in anonymously so Firebase Auth session exists (auth != null in rules).
-        // Requires Anonymous sign-in enabled in Firebase Console →
-        //   Authentication → Sign-in providers → Anonymous → Enable
-        // Wait for anonymous auth to complete BEFORE entering app.
-        // Without this, loadUserChatsInAdmin fires before auth != null
-        // and Firebase returns permission-denied (stuck on loading).
-        auth.signInAnonymously()
-          .catch(() => {
-            console.warn("Anonymous auth unavailable — enable it in Firebase Console → Authentication → Sign-in providers → Anonymous.");
-          })
-          .finally(() => enterApp());
+        _showWelcomeOverlay(() => {
+          auth.signInAnonymously()
+            .catch(() => {
+              console.warn("Anonymous auth unavailable — enable it in Firebase Console → Authentication → Sign-in providers → Anonymous.");
+            })
+            .finally(() => enterApp());
+        });
       } else {
         closeAdminGate();
       }
@@ -1465,6 +1461,71 @@ function resetAddPostForm() {
   if ($("#edit-cancel-btn")) $("#edit-cancel-btn").hidden = true;
   showError("post-error", "");
   updateBottomHint();
+}
+
+/* ── Welcome overlay — shown on correct admin password ───────────────── */
+function _showWelcomeOverlay(onDone) {
+  const ov = document.createElement("div");
+  ov.id = "_admin-welcome-ov";
+  ov.style.cssText = [
+    "position:fixed","inset:0","z-index:99998",
+    "display:flex","flex-direction:column",
+    "align-items:center","justify-content:center","gap:32px",
+    "background:linear-gradient(160deg,#050a14 0%,#0f172a 45%,#1a3054 100%)",
+    "opacity:0","transition:opacity 0.65s ease",
+    "padding:40px 28px","text-align:center","overflow:hidden",
+  ].join(";");
+
+  ov.innerHTML = `
+    <div style="position:absolute;inset:0;pointer-events:none;">
+      <div style="
+        position:absolute;top:-30%;left:50%;transform:translateX(-50%);
+        width:520px;height:520px;
+        background:radial-gradient(circle,rgba(251,191,36,0.09) 0%,transparent 68%);
+        border-radius:50%;
+      "></div>
+      <div style="
+        position:absolute;bottom:-20%;right:-10%;
+        width:300px;height:300px;
+        background:radial-gradient(circle,rgba(30,64,175,0.15) 0%,transparent 70%);
+        border-radius:50%;
+      "></div>
+    </div>
+    <div style="
+      font-size:clamp(17px,4.2vw,32px);
+      font-weight:900;letter-spacing:2.5px;line-height:1.3;
+      background:linear-gradient(135deg,#fbbf24 0%,#ffffff 55%,#fde68a 100%);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+      filter:drop-shadow(0 0 18px rgba(251,191,36,0.5));
+      padding:0 12px;position:relative;z-index:1;
+    ">WELCOME<br>MAHAR SHOAIB<br>
+    <span style='font-size:0.62em;letter-spacing:5px;'>THE KING OF TECHNOLOGY</span></div>
+    <div style="position:relative;z-index:1;">
+      <img src="https://photos.app.goo.gl/XYLQRbnTSFNcvodj9" alt="Shoaib"
+        id="_welcome-pic"
+        style="
+          width:116px;height:116px;border-radius:50%;object-fit:cover;display:block;
+          border:2.5px solid rgba(251,191,36,0.8);
+          box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55),
+                     0 0 48px rgba(251,191,36,0.2);
+        "
+        onerror="this.style.display='none';document.getElementById('_welcome-fb').style.display='flex';"
+      >
+      <div id="_welcome-fb" style="
+        display:none;width:116px;height:116px;border-radius:50%;
+        background:linear-gradient(135deg,#1e3a8a,#1e40af);
+        border:2.5px solid rgba(251,191,36,0.8);
+        box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55);
+        align-items:center;justify-content:center;font-size:46px;
+      ">🛡️</div>
+    </div>`;
+
+  document.body.appendChild(ov);
+  requestAnimationFrame(() => requestAnimationFrame(() => { ov.style.opacity = "1"; }));
+  setTimeout(() => {
+    ov.style.opacity = "0";
+    setTimeout(() => { ov.remove(); onDone(); }, 700);
+  }, 2600);
 }
 
 function openAdminGate() {
@@ -3161,3 +3222,37 @@ function _openAdminChatRoom(roomId, nameA, nameB) {
     msgBox.innerHTML = `<p style="color:red;text-align:center;font-size:13px;">Load fail.</p>`;
   });
 }
+
+/* ── Offline / Online handling ───────────────────────────────────────── */
+(function _setupNetworkHandlers() {
+  function _offlineToast() {
+    const container = document.getElementById("toast-container");
+    if (!container) return;
+    const existing = document.getElementById("_offline-toast");
+    if (existing) return;
+    const el = document.createElement("div");
+    el.id = "_offline-toast";
+    el.className = "toast warn";
+    el.style.cssText = "white-space:normal;max-width:280px;text-align:center;line-height:1.4;";
+    el.textContent = "📡 Aap offline hain. Please check your connection.";
+    container.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("show")));
+  }
+
+  function _onlineToast() {
+    const el = document.getElementById("_offline-toast");
+    if (el) {
+      el.classList.remove("show");
+      setTimeout(() => el.remove(), 350);
+    }
+    if (typeof showToast === "function") {
+      showToast("✅ Internet connection wapas aa gayi!", "success", 3500);
+    }
+  }
+
+  window.addEventListener("offline", _offlineToast);
+  window.addEventListener("online",  _onlineToast);
+
+  // Check initial state
+  if (!navigator.onLine) setTimeout(_offlineToast, 1200);
+})();

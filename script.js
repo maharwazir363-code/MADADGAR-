@@ -1500,16 +1500,17 @@ function _showWelcomeOverlay(onDone) {
       padding:0 12px;position:relative;z-index:1;
     ">WELCOME<br>MAHAR SHOAIB<br>
     <span style='font-size:0.62em;letter-spacing:5px;'>THE KING OF TECHNOLOGY</span></div>
-    <div style="position:relative;z-index:1;">
-      <img src="Shoaib.jpg" alt="shoaib" class="vip-profile-pic">
-      
-      
+    <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:0;">
+      <img
         id="_welcome-pic"
+        src="Shoaib.jpg"
+        alt="Mahar Shoaib"
         style="
           width:116px;height:116px;border-radius:50%;object-fit:cover;display:block;
           border:2.5px solid rgba(251,191,36,0.8);
           box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55),
                      0 0 48px rgba(251,191,36,0.2);
+          flex-shrink:0;
         "
         onerror="this.style.display='none';document.getElementById('_welcome-fb').style.display='flex';"
       >
@@ -1519,6 +1520,7 @@ function _showWelcomeOverlay(onDone) {
         border:2.5px solid rgba(251,191,36,0.8);
         box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55);
         align-items:center;justify-content:center;font-size:46px;
+        flex-shrink:0;
       ">🛡️</div>
     </div>`;
 

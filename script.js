@@ -1529,7 +1529,7 @@ function _showWelcomeOverlay(onDone) {
   setTimeout(() => {
     ov.style.opacity = "0";
     setTimeout(() => { ov.remove(); onDone(); }, 700);
-  }, 2600);
+  }, 5000);
 }
 
 function openAdminGate() {

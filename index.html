@@ -744,6 +744,13 @@
             <div id="chat-messages-area" style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
             <div style="background-color: white; padding: 8px 10px; display: flex; align-items: center; gap: 6px; border-top: 1px solid #ddd; box-sizing: border-box;">
                 <input type="text" id="chat-input-text" placeholder="Type a message..." style="flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid #ccc; border-radius: 20px; outline: none; font-size: 14px; box-sizing: border-box;">
+              <!-- Toolbar buttons -->
+<div id="chat-input-toolbar" style="display: flex; gap: 10px; padding: 5px;">
+    <button onclick="attachFile()">📎</button>
+    <button onclick="sendLocation()">📍</button>
+    <button onclick="startVoiceRecord()">🎤</button>
+</div>
+              
                 <button onclick="sendMessage()" style="background-color: #1E40AF; color: white; border: none; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-weight: bold; font-size: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0;">➔</button>
             </div>
         </div>

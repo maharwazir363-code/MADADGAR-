@@ -1671,6 +1671,239 @@ body,
 }
 
 /* ================================================================
+   ADMIN CHAT HISTORY — clickable chat list items
+   ================================================================ */
+.admin-chat-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.1s ease;
+  border-radius: 8px;
+  margin-bottom: 2px;
+}
+.admin-chat-item:last-child { border-bottom: none; }
+.admin-chat-item:hover {
+  background: rgba(30, 64, 175, 0.05);
+  transform: translateX(2px);
+}
+.admin-chat-item:active {
+  background: rgba(30, 64, 175, 0.10);
+  transform: scale(0.98);
+}
+.admin-chat-item__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e40af, #3b82f6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 800;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.25);
+}
+.admin-chat-item__body {
+  flex: 1;
+  min-width: 0;
+}
+.admin-chat-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+}
+.admin-chat-item__names {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-chat-item__time {
+  font-size: 10px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.admin-chat-item__preview {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}
+.admin-chat-item__arrow {
+  font-size: 20px;
+  color: #cbd5e1;
+  flex-shrink: 0;
+  font-weight: 300;
+}
+[data-theme="dark"] .admin-chat-item:hover    { background: rgba(96,165,250,0.08); }
+[data-theme="dark"] .admin-chat-item__names   { color: #f1f5f9; }
+[data-theme="dark"] .admin-chat-item__preview { color: #94a3b8; }
+[data-theme="dark"] .admin-chat-item          { border-bottom-color: #1e293b; }
+
+/* ================================================================
+   ADMIN CHAT DETAIL OVERLAY — full-screen slide-in panel
+   ================================================================ */
+.admin-chat-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+.admin-chat-detail-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.admin-chat-detail-panel {
+  background: #f8fafc;
+  width: 100%;
+  max-width: 480px;
+  height: 92vh;
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -8px 40px rgba(15, 23, 42, 0.18);
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.34, 1.10, 0.64, 1);
+}
+.admin-chat-detail-overlay.open .admin-chat-detail-panel {
+  transform: translateY(0);
+}
+.admin-chat-detail-header {
+  background: var(--primary, #1e40af);
+  color: #fff;
+  padding: 14px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.admin-chat-detail-back {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+.admin-chat-detail-back:hover  { background: rgba(255,255,255,0.28); }
+.admin-chat-detail-back:active { transform: scale(0.9); }
+.admin-chat-detail-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+.admin-chat-detail-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-chat-detail-sub {
+  font-size: 10px;
+  color: rgba(255,255,255,0.65);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-chat-detail-badge {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 20px;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+.admin-chat-detail-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scroll-behavior: smooth;
+}
+.admin-chat-detail-footer {
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+  padding: 10px 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Bubble styles inside the detail panel ── */
+.acd-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 8px;
+}
+.acd-bubble-wrap.acd-mine   { align-items: flex-end; }
+.acd-bubble-wrap.acd-theirs { align-items: flex-start; }
+
+.acd-sender-label {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 600;
+  margin-bottom: 3px;
+  padding: 0 4px;
+}
+.acd-bubble {
+  padding: 9px 13px;
+  border-radius: 16px;
+  max-width: 78%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  word-break: break-word;
+}
+.acd-bubble-mine {
+  background: #1e40af;
+  color: #fff;
+  border-radius: 16px 16px 0 16px;
+}
+.acd-bubble-theirs {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px 16px 16px 0;
+}
+.acd-meta {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 3px;
+  padding: 0 4px;
+}
+
+[data-theme="dark"] .admin-chat-detail-panel  { background: #0f172a; }
+[data-theme="dark"] .admin-chat-detail-footer { background: #1e293b; border-top-color: #334155; }
+[data-theme="dark"] .acd-bubble-theirs        { background: #1e293b; color: #f1f5f9; border-color: #334155; }
+
+/* ================================================================
    ENHANCED HOVER TRANSITIONS — action buttons & interactive UI
    ================================================================ */
 .action-btn {

@@ -2270,6 +2270,8 @@ function loadUserChatsInAdmin(username) {
 
   if (_adminThreadRef) { _adminThreadRef.off(); _adminThreadRef = null; }
 
+  container.innerHTML = `<p style="color:#888;font-style:italic;font-size:13px;padding:8px;text-align:center;">⏳ Chat history load ho rahi hai...</p>`;
+
   db.ref("chat_rooms").once("value").then((snap) => {
     const rooms = [];
     snap.forEach((child) => {
@@ -2280,20 +2282,115 @@ function loadUserChatsInAdmin(username) {
     });
 
     if (rooms.length === 0) {
-      container.innerHTML = `<p style="color:#888;font-style:italic;font-size:13px;padding:8px;">Is user ki abhi tak koi chat nahi hai.</p>`;
+      container.innerHTML = `
+        <div style="text-align:center;padding:20px;">
+          <div style="font-size:32px;margin-bottom:8px;">💬</div>
+          <p style="color:#888;font-style:italic;font-size:13px;">Is user ki abhi tak koi chat nahi hai.</p>
+        </div>`;
       return;
     }
 
+    rooms.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
+
     container.innerHTML = rooms.map((r) => {
       const others = Object.keys(r.participants || {}).filter((k) => k !== username);
-      const otherName = (r.participantNames && others[0] && r.participantNames[others[0]]) || others[0] || "—";
-      return `<div style="padding:8px 0;border-bottom:1px solid #f0f0f0;">
-        <span style="font-size:12px;font-weight:600;color:#1E40AF;">💬 ${escapeHtml(username)} ↔ ${escapeHtml(otherName)}</span>
-        <span style="font-size:11px;color:#888;margin-left:8px;">${escapeHtml(r.lastMessage || "")}</span>
-      </div>`;
+      const otherID   = others[0] || "";
+      const otherName = (r.participantNames && otherID && r.participantNames[otherID]) || otherID || "—";
+      const lastMsg   = escapeHtml(r.lastMessage || "Koi paigham nahi");
+      const timeStr   = r.lastTimestamp ? formatChatTime(r.lastTimestamp) : "";
+      const chatId    = escapeHtml(r.id);
+      const initLetter = (otherName || "?").charAt(0).toUpperCase();
+      return `
+        <div class="admin-chat-item" onclick="showAdminChatDetail('${chatId}','${escapeHtml(username)}','${escapeHtml(otherName)}','${escapeHtml(otherID)}')" title="Chat detail dekhein">
+          <div class="admin-chat-avatar">${escapeHtml(initLetter)}</div>
+          <div class="admin-chat-info">
+            <div class="admin-chat-names">💬 <strong>${escapeHtml(username)}</strong> ↔ <strong>${escapeHtml(otherName)}</strong></div>
+            <div class="admin-chat-last">${lastMsg}</div>
+          </div>
+          <div class="admin-chat-meta">
+            <div class="admin-chat-time">${escapeHtml(timeStr)}</div>
+            <div class="admin-chat-arrow">›</div>
+          </div>
+        </div>`;
     }).join("");
   }).catch(() => {
-    if (container) container.innerHTML = `<p style="color:#888;font-size:13px;padding:8px;">Chat history load nahi ho saki.</p>`;
+    if (container) container.innerHTML = `
+      <div style="text-align:center;padding:16px;">
+        <p style="color:#e53e3e;font-size:13px;">⚠️ Chat history load nahi ho saki.</p>
+        <button onclick="loadUserChatsInAdmin('${escapeHtml(username)}')" style="margin-top:8px;padding:6px 14px;border-radius:8px;border:1px solid #1E40AF;color:#1E40AF;background:#fff;cursor:pointer;font-size:13px;">↺ Phir Koshish Karein</button>
+      </div>`;
+  });
+}
+
+/* ─── Admin chat detail view ──────────────────────────────────── */
+function showAdminChatDetail(chatId, username, otherName, otherID) {
+  const container = document.getElementById("admin-user-messages-container");
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="admin-chat-detail-header">
+      <button class="admin-chat-back-btn" onclick="loadUserChatsInAdmin('${escapeHtml(username)}')">← Wapas</button>
+      <div class="admin-chat-detail-title">💬 ${escapeHtml(username)} ↔ ${escapeHtml(otherName)}</div>
+    </div>
+    <div id="admin-chat-detail-msgs" style="display:flex;flex-direction:column;gap:6px;padding:10px 8px;">
+      <p style="text-align:center;color:#888;font-size:13px;padding:16px;">⏳ Messages load ho rahi hain...</p>
+    </div>`;
+
+  db.ref("chats/" + chatId).orderByChild("timestamp").once("value").then((snap) => {
+    const msgsEl = document.getElementById("admin-chat-detail-msgs");
+    if (!msgsEl) return;
+
+    if (!snap.exists()) {
+      msgsEl.innerHTML = `<p style="text-align:center;color:#888;font-size:13px;padding:16px;">Koi message nahi mila.</p>`;
+      return;
+    }
+
+    const messages = [];
+    snap.forEach((child) => {
+      messages.push({ key: child.key, ...child.val() });
+    });
+
+    if (messages.length === 0) {
+      msgsEl.innerHTML = `<p style="text-align:center;color:#888;font-size:13px;padding:16px;">Koi message nahi mila.</p>`;
+      return;
+    }
+
+    msgsEl.innerHTML = messages.map((msg) => {
+      const isByUser   = msg.senderID === username;
+      const senderLabel = isByUser ? escapeHtml(username) : escapeHtml(otherName || msg.senderID || "?");
+      const timeStr    = msg.timestamp ? formatChatTime(msg.timestamp) : "";
+      const seenTick   = msg.seen
+        ? `<span style="color:#60A5FA;font-size:10px;">✓✓</span>`
+        : `<span style="color:#aaa;font-size:10px;">✓</span>`;
+
+      let content = "";
+      const msgType = msg.type || "text";
+      if (msgType === "image") {
+        content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image" style="max-width:200px;border-radius:8px;display:block;margin-top:4px;" onerror="this.style.display='none'">`;
+      } else if (msgType === "audio") {
+        content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}" style="max-width:200px;margin-top:4px;display:block;"></audio>`;
+      } else if (msgType === "document") {
+        content = `<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">📄 <a href="${escapeHtml(msg.fileUrl || "")}" target="_blank" style="color:inherit;font-size:12px;">${escapeHtml(msg.fileName || "Document")}</a></div>`;
+      } else if (msgType === "location") {
+        content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank" style="color:inherit;font-size:12px;">📍 Location dekhein</a>`;
+      } else {
+        content = escapeHtml(msg.text || "");
+      }
+
+      return `
+        <div class="admin-msg-bubble ${isByUser ? "admin-msg-right" : "admin-msg-left"}">
+          <div class="admin-msg-sender">${senderLabel}</div>
+          <div class="admin-msg-box ${isByUser ? "admin-msg-box-blue" : "admin-msg-box-white"}">
+            ${content}
+          </div>
+          <div class="admin-msg-footer">${timeStr} ${isByUser ? seenTick : ""}</div>
+        </div>`;
+    }).join("");
+
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }).catch((err) => {
+    const msgsEl = document.getElementById("admin-chat-detail-msgs");
+    if (msgsEl) msgsEl.innerHTML = `<p style="text-align:center;color:#e53e3e;font-size:13px;padding:16px;">⚠️ Messages load nahi hue. (${escapeHtml(err.message || "")})</p>`;
   });
 }
 

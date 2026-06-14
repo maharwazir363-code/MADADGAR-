@@ -1135,9 +1135,7 @@ function renderAdminUsersTable() {
           <div class="user-handle">@${escapeHtml(u.username)}</div>
           ${u.blocked ? '<span class="blocked-tag">🚫 BLOCKED</span>' : ""}
           ${
-            u.emailVerified === true
-              ? '<span class="status-badge verified">✓ Verified</span>'
-              : '<span class="status-badge pending">⏳ Pending</span>'
+             
           }
         </div>
         <div class="user-email">${escapeHtml(u.email || "—")}</div>

@@ -2425,13 +2425,19 @@ async function _resizeImageToBase64(file, maxDim, quality) {
 function attachFile() {
     const input = document.createElement('input');
     input.type = 'file';
+    input.accept = 'image/*'; // Sirf photos ke liye
     input.onchange = e => {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Yahan file upload logic aayega, abhi hum sirf message type send kar rahe hain
-        // Aap yahan apna purana upload logic laga sakte hain
-        sendAttachmentMessage("file", "Sent a file"); 
+        // Yahan file ko Firebase Storage/Database mein bhejne ka logic
+        // Filhal hum image ka path ya URL bhej rahe hain
+        alert("File select ho gayi, ab uploading shuru...");
+        
+        // Aapka purana function jo image process karta hai
+        _resizeImageToBase64(file, 800, 0.7).then(base64 => {
+            sendAttachmentMessage("image", base64);
+        });
     };
     input.click();
 }
@@ -2442,25 +2448,27 @@ function sendLocation() {
             const mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
             sendAttachmentMessage("location", mapUrl);
         });
+    } else {
+        alert("Location support nahi mil raha.");
     }
 }
 
 function startVoiceRecord() {
-    // Yahan recording logic start karein, recording khatam hone par niche wala function call karein
-    sendAttachmentMessage("voice", "Voice note");
+    alert("Voice recording feature abhi set karna hai, kyunke browser permissions chahiye.");
+    // Aap yahan apna purana MediaRecorder wala code laga sakte hain
 }
 
-// Ye helper function hai jo aapke sendMessage jaisa hi kaam karega
 function sendAttachmentMessage(type, content) {
-    const chatRoomID = state.activeChat; // Ye aapke sendMessage function se liya gaya hai
+    const chatRoomID = state.activeChat;
     if (!chatRoomID) return;
 
     db.ref("chats/" + chatRoomID).push({
         senderID: state.user.username,
-        type: type,
+        type: type, // 'image', 'location', ya 'voice'
         text: content,
         timestamp: firebase.database.ServerValue.TIMESTAMP,
         seen: false
     });
 }
 
+ 

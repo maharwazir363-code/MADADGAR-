@@ -34,6 +34,7 @@
     🤖 <span id="btn-text" style="margin-left: 10px;">Install App</span>
   </button>
 </div>
+
     <!-- ===================== LOGIN SCREEN ===================== -->
     <section class="screen" id="screen-login">
       <div class="auth-wrap">
@@ -84,9 +85,14 @@
             <span id="login-btn-text">LOGIN</span>
           </button>
 
-          <div class="divider">
-            <span>ya</span>
-          </div>
+          <div class="divider"><span>ya</span></div>
+
+          <button type="button" class="btn btn-google btn-block" id="login-google-btn">
+            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+            <span id="login-google-btn-text">Google se Login</span>
+          </button>
+
+          <div class="divider"><span>ya</span></div>
 
           <button
             type="button"
@@ -126,18 +132,6 @@
             />
           </div>
 
-          <label class="field-label">EMAIL</label>
-          <div class="input-box">
-            <span class="ic">✉️</span>
-            <input
-              type="email"
-              id="signup-email"
-              placeholder="aapki@email.com"
-              autocomplete="email"
-              inputmode="email"
-            />
-          </div>
-
           <label class="field-label">PASSWORD</label>
           <div class="input-box">
             <span class="ic">🔒</span>
@@ -150,10 +144,63 @@
             <button type="button" class="eye-btn" data-target="signup-password" aria-label="Show password">👁</button>
           </div>
 
+          <label class="field-label">PASSWORD CONFIRM KAREIN</label>
+          <div class="input-box">
+            <span class="ic">🔒</span>
+            <input
+              type="password"
+              id="signup-confirm-password"
+              placeholder="Password dobara likhein..."
+              autocomplete="new-password"
+            />
+            <button type="button" class="eye-btn" data-target="signup-confirm-password" aria-label="Show confirm password">👁</button>
+          </div>
+
+          <!-- Security Questions Section -->
+          <div class="security-section">
+            <div class="security-section-title">🛡️ Security Questions</div>
+            <p class="security-section-sub">Yeh sawaal password bhoolne par kaam aayenge</p>
+
+            <label class="field-label">SECURITY QUESTION 1</label>
+            <div class="input-box input-box-readonly">
+              <span class="ic">🏏</span>
+              <input type="text" value="Aap ki favorite cricket team konsi hai?" readonly style="color:var(--muted);font-style:italic;font-size:13px;" />
+            </div>
+            <label class="field-label">JAWAB 1</label>
+            <div class="input-box">
+              <span class="ic">✏️</span>
+              <input
+                type="text"
+                id="signup-sec-ans1"
+                placeholder="Apna jawab likhein..."
+                autocomplete="off"
+                autocapitalize="none"
+              />
+            </div>
+
+            <label class="field-label">SECURITY QUESTION 2</label>
+            <div class="input-box input-box-readonly">
+              <span class="ic">👫</span>
+              <input type="text" value="Aap ke bachpan ke best friend ka naam kya tha?" readonly style="color:var(--muted);font-style:italic;font-size:13px;" />
+            </div>
+            <label class="field-label">JAWAB 2</label>
+            <div class="input-box">
+              <span class="ic">✏️</span>
+              <input
+                type="text"
+                id="signup-sec-ans2"
+                placeholder="Apna jawab likhein..."
+                autocomplete="off"
+                autocapitalize="none"
+              />
+            </div>
+          </div>
+
           <div class="error-box" id="signup-error" hidden></div>
 
-          <button type="button" id="signup-btn" class="btn btn-primary btn-block">
-            <span id="signup-btn-text">SIGN UP</span>
+          <button type="button" id="signup-btn" class="btn btn-google btn-block" style="margin-top:22px">
+            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+            <span id="signup-btn-text">Continue with Google</span>
           </button>
 
           <p class="muted center small spaced">
@@ -165,17 +212,122 @@
         <!-- Success notice (shown after signup) -->
         <div id="signup-success-notice" class="form" hidden>
           <div class="signup-success-box">
-            <div class="signup-success-ic">✉️</div>
+            <div class="signup-success-ic">✅</div>
             <div class="signup-success-title">Registration Kamyab!</div>
             <div class="signup-success-msg">
-              Aap ki email pe ek <strong>verification link</strong> bheja gaya hai.
-              Login karne se pehle apna inbox check karein aur email verify karein.
+              Aap ka account <strong>Google se verify</strong> ho gaya.<br/>
+              Ab aap login kar sakte hain.
             </div>
           </div>
           <button type="button" id="go-to-login-btn" class="btn btn-primary btn-block" style="margin-top:20px">
             LOGIN PE JAYEIN →
           </button>
         </div>
+      </div>
+    </section>
+
+    <!-- ===================== FORGOT PASSWORD SCREEN ===================== -->
+    <section class="screen" id="screen-forgot">
+      <div class="auth-wrap">
+        <button class="back-link" id="back-from-forgot">← Wapas</button>
+        <div class="logo-box small">MADADGAR</div>
+        <p class="brand-tag">Password Reset</p>
+
+        <!-- Step 1: Username + Security Questions -->
+        <div id="forgot-step1" class="form">
+          <h2 class="auth-title" style="font-size:20px;margin:16px 0 4px;">Security Questions</h2>
+          <p class="auth-sub">Apna username aur security questions ke jawab dein</p>
+
+          <label class="field-label">USERNAME</label>
+          <div class="input-box">
+            <span class="ic">👤</span>
+            <input
+              type="text"
+              id="forgot-username"
+              placeholder="Apna username likhein..."
+              autocapitalize="none"
+              autocomplete="off"
+            />
+          </div>
+
+          <label class="field-label">SECURITY QUESTION 1</label>
+          <div class="input-box input-box-readonly">
+            <span class="ic">🏏</span>
+            <input type="text" value="Aap ki favorite cricket team konsi hai?" readonly style="color:var(--muted);font-style:italic;font-size:13px;" />
+          </div>
+          <label class="field-label">JAWAB 1</label>
+          <div class="input-box">
+            <span class="ic">✏️</span>
+            <input
+              type="text"
+              id="forgot-ans1"
+              placeholder="Apna jawab likhein..."
+              autocomplete="off"
+              autocapitalize="none"
+            />
+          </div>
+
+          <label class="field-label">SECURITY QUESTION 2</label>
+          <div class="input-box input-box-readonly">
+            <span class="ic">👫</span>
+            <input type="text" value="Aap ke bachpan ke best friend ka naam kya tha?" readonly style="color:var(--muted);font-style:italic;font-size:13px;" />
+          </div>
+          <label class="field-label">JAWAB 2</label>
+          <div class="input-box">
+            <span class="ic">✏️</span>
+            <input
+              type="text"
+              id="forgot-ans2"
+              placeholder="Apna jawab likhein..."
+              autocomplete="off"
+              autocapitalize="none"
+            />
+          </div>
+
+          <div class="error-box" id="forgot-step1-error" hidden></div>
+
+          <button type="button" id="forgot-verify-btn" class="btn btn-primary btn-block">
+            <span id="forgot-verify-btn-text">JAWAB VERIFY KAREIN</span>
+          </button>
+        </div>
+
+        <!-- Step 2: New Password (shown after successful verification) -->
+        <div id="forgot-step2" class="form" hidden>
+          <h2 class="auth-title" style="font-size:20px;margin:16px 0 4px;">Naya Password</h2>
+          <p class="auth-sub">Google se verify kar ke naya password set karein</p>
+
+          <label class="field-label">NAYA PASSWORD</label>
+          <div class="input-box">
+            <span class="ic">🔒</span>
+            <input
+              type="password"
+              id="forgot-new-password"
+              placeholder="Naya password (6+ characters)..."
+              autocomplete="new-password"
+            />
+            <button type="button" class="eye-btn" data-target="forgot-new-password" aria-label="Show password">👁</button>
+          </div>
+
+          <label class="field-label">PASSWORD CONFIRM KAREIN</label>
+          <div class="input-box">
+            <span class="ic">🔒</span>
+            <input
+              type="password"
+              id="forgot-confirm-password"
+              placeholder="Password dobara likhein..."
+              autocomplete="new-password"
+            />
+            <button type="button" class="eye-btn" data-target="forgot-confirm-password" aria-label="Show confirm password">👁</button>
+          </div>
+
+          <div class="error-box" id="forgot-step2-error" hidden></div>
+
+          <button type="button" id="forgot-reset-btn" class="btn btn-google btn-block" style="margin-top:22px">
+            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/><path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/></svg>
+            <span id="forgot-reset-btn-text">Google se Verify & Password Reset</span>
+          </button>
+        </div>
+
       </div>
     </section>
 
@@ -198,7 +350,6 @@
     style="position: relative;"
 >
     💬
-    <!-- Yeh red badge count ke liye hai jo WhatsApp ki tarah unread messages dikhaega -->
     <span id="global-inbox-badge" style="display: none; position: absolute; top: -5px; right: -5px; background-color: red; color: white; border-radius: 50%; padding: 2px 6px; font-size: 10px; font-weight: bold;">0</span>
             </button>
 
@@ -308,7 +459,7 @@
 
       <!-- ── Verification Analytics (top) ── -->
       <div class="analytics-group">
-        <div class="analytics-group-label">Email Verification</div>
+        <div class="analytics-group-label">Google Auth Accounts</div>
         <div class="stats-row">
           <div class="stat-card">
             <div class="stat-ic blue">👥</div>
@@ -399,13 +550,6 @@
           <div style="width: 36px"></div>
         </div>
       </header>
-      <!--
-        FIX: Only ONE chat history container exists — created dynamically by
-        renderAdminUser() inside #admin-user-content.
-        The old static #admin-user-messages-section has been removed to prevent
-        the duplicate "User Chat History (Admin View)" that caused the spinner to
-        get stuck (getElementById found the wrong container first).
-      -->
       <div id="admin-user-content"></div>
     </section>
 
@@ -527,34 +671,6 @@
       </div>
     </div>
 
-    <!-- ===================== FORGOT PASSWORD MODAL ===================== -->
-    <div class="modal-backdrop" id="forgot-modal" hidden>
-      <div class="modal-card forgot-modal-card">
-        <div class="forgot-modal-header">
-          <div class="forgot-modal-icon">🔑</div>
-          <h3 class="forgot-modal-title">Password Reset</h3>
-          <p class="forgot-modal-sub">Apna registered email daalen. Hum aapko reset link bhejenge.</p>
-        </div>
-        <div class="input-box" style="margin-bottom:6px">
-          <span class="ic">✉️</span>
-          <input
-            type="email"
-            id="forgot-email"
-            placeholder="aapki@email.com"
-            inputmode="email"
-            autocomplete="email"
-          />
-        </div>
-        <div class="error-box" id="forgot-error" hidden></div>
-        <div class="forgot-modal-actions">
-          <button class="btn btn-outline" id="forgot-cancel">Cancel</button>
-          <button class="btn btn-primary" id="forgot-submit">
-            <span id="forgot-btn-text">Reset Link Bhejein</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- ===================== REPORT CONFIRM MODAL ===================== -->
     <div class="modal-backdrop" id="report-modal" hidden>
       <div class="modal-card report-confirm-card">
@@ -611,36 +727,29 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
     <script src="script.js"></script>
+
     <!-- VIP Profile Modal (Popup Window) -->
 <div id="profile-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; font-family: Arial, sans-serif;">
     
     <div style="background-color: white; width: 85%; max-width: 400px; padding: 25px; border-radius: 15px; text-align: center; position: relative; box-shadow: 0px 5px 15px rgba(0,0,0,0.3);">
         
-        <!-- Close Button (Cross Icon) -->
         <span onclick="document.getElementById('profile-modal').style.display = 'none'" style="position: absolute; top: 15px; right: 20px; font-size: 24px; font-weight: bold; cursor: pointer; color: #666;">&times;</span>
         
         <h3 style="margin-top: 0; color: #0046c7; font-size: 22px; margin-bottom: 20px;">Apna Account</h3>
         
-        <!-- Profile Picture Container -->
         <div style="position: relative; width: 120px; height: 120px; margin: 0 auto 15px auto;">
             <img id="my-profile-pic" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #0046c7;">
-            
-            <!-- Hidden Input File Picker -->
             <input type="file" id="profile-file-picker" accept="image/*" style="display: none;">
-            
-            <!-- Edit Icon on Picture -->
             <div onclick="document.getElementById('profile-file-picker').click()" style="position: absolute; bottom: 0; right: 5px; background-color: #0046c7; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
                 📷
             </div>
         </div>
 
-        <!-- User Info -->
         <h4 id="my-profile-name" style="margin: 10px 0 5px 0; font-size: 18px; color: #333;">Loading Name...</h4>
         <p id="my-profile-status" style="margin: 0 0 20px 0; font-size: 14px; color: #777;">MADADGAR Member</p>
         
         <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 15px;">
         
-        <!-- User's Own Posts Section -->
         <h5 style="text-align: left; margin: 0 0 10px 0; color: #0046c7; font-size: 16px;">Meri Posts</h5>
         <div id="my-own-posts" style="max-height: 150px; overflow-y: auto; text-align: left; font-size: 13px; color: #555; padding: 5px; background: #f9f9f9; border-radius: 8px;">
             Abhi tak koi post nahi ki.
@@ -649,14 +758,12 @@
     </div>
 </div>
 
-    <!-- 💬 ===================== VIP CHAT MODAL (WHATSAPP STYLE) ===================== -->
+    <!-- 💬 VIP CHAT MODAL -->
     <div id="chat-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); z-index: 1001; justify-content: center; align-items: center; font-family: Arial, sans-serif;">
         <div style="background-color: #f0f2f5; width: 90%; max-width: 450px; height: 80vh; border-radius: 15px; display: flex; flex-direction: column; overflow: hidden; position: relative; box-shadow: 0px 5px 15px rgba(0,0,0,0.3);">
-            <!-- Chat Header -->
             <div style="background-color: #1E40AF; color: white; padding: 15px; display: flex; align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center;">
                     <img id="chat-user-pic" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" style="width: 35px; height: 35px; border-radius: 50%; margin-right: 10px; border: 1px solid white;">
-                    <!-- FIX: chat-user-status moved here so it appears inside the header -->
                     <div>
                         <h4 id="chat-user-name" style="margin: 0; font-size: 16px; line-height: 1.2;">Loading...</h4>
                         <div id="chat-user-status" style="font-size: 11px; color: rgba(255,255,255,0.75); font-weight: normal; margin-top: 2px;">offline</div>
@@ -664,9 +771,7 @@
                 </div>
                 <span onclick="closeChatModal()" style="font-size: 22px; cursor: pointer;">&times;</span>
             </div>
-            <!-- Messages Area -->
             <div id="chat-messages-area" style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
-            <!-- Input Area — JS (_ensureChatInputUI) injects 📎 📍 🎤 toolbar before the text input -->
             <div style="background-color: white; padding: 8px 10px; display: flex; align-items: center; gap: 6px; border-top: 1px solid #ddd; box-sizing: border-box;">
                 <input type="text" id="chat-input-text" placeholder="Type a message..." style="flex: 1; min-width: 0; padding: 9px 12px; border: 1px solid #ccc; border-radius: 20px; outline: none; font-size: 14px; box-sizing: border-box;">
                 <button onclick="sendMessage()" style="background-color: #1E40AF; color: white; border: none; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-weight: bold; font-size: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0;">➔</button>
@@ -674,23 +779,16 @@
         </div>
     </div>
 
-    <!-- ==================== INBOX / MESSAGES SCREEN ==================== -->
+    <!-- INBOX SCREEN -->
 <section class="screen" id="chat-history-screen" style="display: none; padding: 15px; background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    
-    <!-- Header (WhatsApp Style) -->
     <div style="display: flex; align-items: center; background-color: #075E54; color: white; padding: 15px; margin: -15px -15px 15px -15px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">
         <button onclick="goBackToHome()" style="background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-right: 15px;">←</button>
         <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Inbox / Messages</h2>
     </div>
-
-    <!-- Active Chat User Status Info (WhatsApp online bar type) -->
     <div id="inbox-welcome-text" style="background-color: #fff; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #666; border-left: 4px solid #128C7E;">
         💬 Aap ki tamam bat-cheet (Chat History) yahan dikhai degi.
     </div>
-
-    <!-- WhatsApp Chat List Container -->
     <div id="inbox-messages-list" style="display: flex; flex-direction: column; gap: 10px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-height: 75vh; overflow-y: auto; padding: 5px;">
-        <!-- JavaScript ke zariye yahan dynamic list load hogi -->
         <p style="text-align: center; color: #888; padding: 20px;">Chats load ho rahi hain...</p>
     </div>
 </section>

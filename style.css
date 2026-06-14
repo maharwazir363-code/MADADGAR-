@@ -1826,3 +1826,97 @@ body,
   background: #7c2d12;
   border-left: 3px solid #f97316;
 }
+
+/* ============================================================
+   NEW AUTH ADDITIONS — Google Button, Security Questions,
+   Forgot Password Screen
+   ============================================================ */
+
+/* Google Auth Button */
+.btn-google {
+  background: #fff;
+  color: #3c4043;
+  border: 1.5px solid #dadce0;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  gap: 10px;
+}
+.btn-google:hover {
+  background: #f8f9fa;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+  border-color: #c8cacd;
+}
+.btn-google:active {
+  background: #f1f3f4;
+  transform: scale(0.98);
+}
+.btn-google svg {
+  flex-shrink: 0;
+}
+[data-theme="dark"] .btn-google {
+  background: #2d3748;
+  color: #e2e8f0;
+  border-color: #4a5568;
+}
+[data-theme="dark"] .btn-google:hover {
+  background: #374151;
+}
+
+/* Security Questions Section */
+.security-section {
+  margin-top: 22px;
+  border: 1.5px solid var(--secondary);
+  border-radius: 14px;
+  padding: 16px 14px 14px;
+  background: rgba(30, 64, 175, 0.03);
+}
+.security-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.security-section-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.security-section .field-label:first-of-type {
+  margin-top: 10px;
+}
+[data-theme="dark"] .security-section {
+  background: rgba(96, 165, 250, 0.05);
+  border-color: var(--border);
+}
+
+/* Read-only input box (security question display) */
+.input-box-readonly {
+  background: var(--secondary) !important;
+  border-color: var(--border) !important;
+  opacity: 0.85;
+}
+.input-box-readonly input {
+  cursor: default !important;
+  user-select: none;
+}
+[data-theme="dark"] .input-box-readonly {
+  background: var(--secondary) !important;
+}
+
+/* Forgot password screen — step transition */
+#forgot-step2 {
+  animation: slideInFromRight 0.25s ease;
+}
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Signup screen — extra scroll room for security questions */
+#screen-signup .auth-wrap {
+  padding-bottom: 60px;
+}
+#screen-forgot .auth-wrap {
+  padding-bottom: 60px;
+}

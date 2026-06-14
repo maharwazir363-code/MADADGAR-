@@ -1134,9 +1134,7 @@ function renderAdminUsersTable() {
           <div class="user-name">${escapeHtml(u.fullName)}</div>
           <div class="user-handle">@${escapeHtml(u.username)}</div>
           ${u.blocked ? '<span class="blocked-tag">🚫 BLOCKED</span>' : ""}
-          ${
-             
-          }
+          ${u.verified ? '<span class="status-badge verified">✓ Verified</span>' : '<span class="status-badge pending">Pending</span>'}
         </div>
         <div class="user-email">${escapeHtml(u.email || "—")}</div>
         <div class="user-posts-col"><div class="user-posts-num">${count}</div></div>

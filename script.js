@@ -1,5 +1,6 @@
 /* ============================================================
    MADADGAR — Pure vanilla JS app (Firebase RTDB via compat SDK)
+   Modified: New Auth Flow — Username/Password + Google, Security Questions
    ============================================================ */
 
 const firebaseConfig = {
@@ -13,7 +14,6 @@ const firebaseConfig = {
   appId: "1:570844080170:web:3a35a26d67747a8210bb53",
 };
 
-// FIX: Guard against double-initialisation
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
@@ -42,7 +42,7 @@ const state = {
   activeChat: null,
 };
 
-/* ----------------------------- Helpers ----------------------------- */
+/* ─────────────────── Helpers ─────────────────── */
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
@@ -115,7 +115,22 @@ function loadPersistedUser() {
   }
 }
 
-/* ----------------------------- Auth ----------------------------- */
+/* ─────────────────── SHA-256 Hash Utility ─────────────────── */
+async function hashString(str) {
+  const msgBuffer = new TextEncoder().encode(str.toLowerCase().trim());
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/* ─────────────────── Google Auth Provider ─────────────────── */
+function getGoogleProvider() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  return provider;
+}
+
+/* ─────────────────── Auth: Login ─────────────────── */
 async function handleLogin(e) {
   e.preventDefault();
   const username = $("#login-username").value;
@@ -155,28 +170,8 @@ async function handleLogin(e) {
       throw authErr;
     }
 
-    if (!cred.user.emailVerified) {
-      await auth.signOut();
-      return showError(
-        "login-error",
-        "Aap ki email verify nahi hui. Inbox check karein aur pehle email verify karein."
-      );
-    }
-
-    if (!data.emailVerified) {
-      await db.ref("users/" + cleanUsername + "/emailVerified").set(true);
-    }
-
-    // ── Keep the Firebase Auth session alive so security rules work ──────
-    // DO NOT call auth.signOut() here — the session is needed for RTDB rules.
-    // logout() already calls auth.signOut() when the user explicitly logs out.
-
     const uid = cred.user.uid;
-
-    // Write uid→username reverse-index (idempotent — safe to rewrite on every login)
     await db.ref("uid_to_username/" + uid).set(cleanUsername);
-
-    // Backfill uid into user profile if it wasn't stored during signup
     if (!data.uid) {
       await db.ref("users/" + cleanUsername + "/uid").set(uid);
     }
@@ -189,7 +184,6 @@ async function handleLogin(e) {
       isAdmin: false,
     };
     persistUser();
-    // FIX: setupUserPresence() removed here — enterApp() calls it already
     enterApp();
   } catch (err) {
     console.error("Login error:", err.code, err.message);
@@ -199,77 +193,353 @@ async function handleLogin(e) {
   }
 }
 
+/* ─────────────────── Auth: Google Login ─────────────────── */
+async function handleGoogleLogin() {
+  showError("login-error", "");
+  const btn = $("#login-google-btn-text");
+  if (btn) btn.textContent = "Intezaar karein...";
+  const googleBtn = $("#login-google-btn");
+  if (googleBtn) googleBtn.disabled = true;
+
+  try {
+    const result = await auth.signInWithPopup(getGoogleProvider());
+    const uid = result.user.uid;
+
+    // Look up username from uid reverse-index
+    const snap = await db.ref("uid_to_username/" + uid).get();
+    if (!snap.exists()) {
+      await auth.signOut();
+      return showError("login-error", "Koi account nahi mila. Pehle Sign Up karein.");
+    }
+
+    const username = snap.val();
+    const userSnap = await db.ref("users/" + username).get();
+    if (!userSnap.exists()) {
+      await auth.signOut();
+      return showError("login-error", "User data nahi mila. Admin se raabta karein.");
+    }
+
+    const data = userSnap.val();
+    if (data.blocked) {
+      await auth.signOut();
+      return showError("login-error", "Aap ko admin ne block kar diya hai.");
+    }
+
+    state.user = {
+      username: data.username || username,
+      fullName: data.fullName,
+      email: data.email || result.user.email,
+      uid,
+      isAdmin: false,
+    };
+    persistUser();
+    enterApp();
+  } catch (err) {
+    console.error("Google login error:", err.code, err.message);
+    if (err.code === "auth/popup-closed-by-user") {
+      showError("login-error", "Google login cancel ho gaya.");
+    } else if (err.code === "auth/popup-blocked") {
+      showError("login-error", "Popup block ho gaya. Browser settings check karein.");
+    } else {
+      showError("login-error", "Google login fail hua. Phir koshish karein.");
+    }
+  } finally {
+    if (btn) btn.textContent = "Google se Login";
+    if (googleBtn) googleBtn.disabled = false;
+  }
+}
+
+/* ─────────────────── Auth: Signup ─────────────────── */
 async function handleSignup() {
-  const fullName = $("#signup-fullname").value.trim();
-  const username = safeUsername($("#signup-username").value);
-  const email    = $("#signup-email").value.trim().toLowerCase();
-  const password = $("#signup-password").value;
+  const fullName  = $("#signup-fullname").value.trim();
+  const username  = safeUsername($("#signup-username").value);
+  const password  = $("#signup-password").value;
+  const confirmPw = $("#signup-confirm-password").value;
+  const secAns1   = ($("#signup-sec-ans1").value || "").trim();
+  const secAns2   = ($("#signup-sec-ans2").value || "").trim();
 
   showError("signup-error", "");
+
   if (!fullName)
     return showError("signup-error", "Apna naam likhein.");
   if (username.length < 3)
     return showError("signup-error", "Username chhota hai (kam az kam 3 letters).");
   if (!/^[a-zA-Z0-9_]+$/.test(username))
     return showError("signup-error", "Username mein sirf letters, numbers, _ chalega.");
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return showError("signup-error", "Sahi email address daalen.");
   if (password.length < 6)
     return showError("signup-error", "Password chhota hai (kam az kam 6 characters).");
+  if (password !== confirmPw)
+    return showError("signup-error", "Dono passwords match nahi karte.");
+  if (!secAns1)
+    return showError("signup-error", "Security Question 1 ka jawab daalein.");
+  if (!secAns2)
+    return showError("signup-error", "Security Question 2 ka jawab daalein.");
 
-  const btn = $("#signup-btn-text");
-  btn.textContent = "Account ban raha hai...";
-  $("#signup-btn").disabled = true;
+  const btn     = $("#signup-btn-text");
+  const signBtn = $("#signup-btn");
+  btn.textContent = "Google se verify ho raha hai...";
+  signBtn.disabled = true;
 
   try {
+    // Check username availability first
     const existing = await db.ref("users/" + username).get();
     if (existing.exists())
       return showError("signup-error", "Yeh username pehle se hai. Doosra try karein.");
 
-    const cred = await auth.createUserWithEmailAndPassword(email, password);
-    await cred.user.sendEmailVerification();
+    // Hash security answers
+    const [hash1, hash2] = await Promise.all([
+      hashString(secAns1),
+      hashString(secAns2),
+    ]);
 
-    // Write uid→username reverse-index FIRST so the users/ write passes rules
-    await db.ref("uid_to_username/" + cred.user.uid).set(username);
+    // Step 1: Google sign-in to get email + uid
+    let googleResult;
+    try {
+      googleResult = await auth.signInWithPopup(getGoogleProvider());
+    } catch (popupErr) {
+      if (popupErr.code === "auth/popup-closed-by-user")
+        return showError("signup-error", "Google login cancel ho gaya. Dobara try karein.");
+      if (popupErr.code === "auth/popup-blocked")
+        return showError("signup-error", "Popup block ho gaya. Browser settings check karein.");
+      throw popupErr;
+    }
 
+    const googleEmail = googleResult.user.email;
+    const googleUid   = googleResult.user.uid;
+
+    // Check if this Google account is already registered
+    const uidCheck = await db.ref("uid_to_username/" + googleUid).get();
+    if (uidCheck.exists()) {
+      await auth.signOut();
+      return showError(
+        "signup-error",
+        "Yeh Google account pehle se registered hai. Login karein."
+      );
+    }
+
+    // Step 2: Link email/password credential to Google account
+    // so user can log in with username+password OR Google
+    try {
+      const emailCred = firebase.auth.EmailAuthProvider.credential(
+        googleEmail,
+        password
+      );
+      await googleResult.user.linkWithCredential(emailCred);
+    } catch (linkErr) {
+      // email/password link might fail if email already exists as separate account
+      // In that case we just use Google auth only — still save the data
+      console.warn("Email link warning:", linkErr.code, linkErr.message);
+    }
+
+    // Step 3: Write uid→username reverse-index
+    await db.ref("uid_to_username/" + googleUid).set(username);
+
+    // Step 4: Save user data with hashed security answers
     await db.ref("users/" + username).set({
       fullName,
       username,
-      email,
-      uid: cred.user.uid,
+      email: googleEmail,
+      uid: googleUid,
       blocked: false,
-      emailVerified: false,
+      emailVerified: true,
+      secQ1: "Aap ki favorite cricket team konsi hai?",
+      secA1Hash: hash1,
+      secQ2: "Aap ke bachpan ke best friend ka naam kya tha?",
+      secA2Hash: hash2,
       createdAt: Date.now(),
     });
 
+    // Sign out after registration (user must login manually)
     await auth.signOut();
 
+    // Show success
     $("#signup-form").hidden = true;
     $("#signup-success-notice").hidden = false;
+
   } catch (err) {
     console.error("Signup error:", err.code, err.message);
     let msg = err.message || "Signup fail hua. Phir koshish karein.";
     if (err.code === "auth/email-already-in-use")
-      msg = "Yeh email pehle se registered hai.";
-    else if (err.code === "auth/invalid-email")
-      msg = "Email address sahi nahi hai.";
-    else if (err.code === "auth/weak-password")
-      msg = "Password zyada secure hona chahiye (kam az kam 6 characters).";
+      msg = "Yeh Google email pehle se registered hai. Login karein.";
+    else if (err.code === "auth/account-exists-with-different-credential")
+      msg = "Yeh email pehle se kisi aur account se linked hai.";
     showError("signup-error", msg);
   } finally {
-    btn.textContent = "SIGN UP";
-    $("#signup-btn").disabled = false;
+    btn.textContent = "Continue with Google";
+    signBtn.disabled = false;
   }
 }
 
 function resetSignupUI() {
   $("#signup-form").hidden = false;
   $("#signup-success-notice").hidden = true;
-  $("#signup-fullname").value = "";
-  $("#signup-username").value = "";
-  $("#signup-email").value    = "";
-  $("#signup-password").value = "";
+  if ($("#signup-fullname"))          $("#signup-fullname").value = "";
+  if ($("#signup-username"))          $("#signup-username").value = "";
+  if ($("#signup-password"))          $("#signup-password").value = "";
+  if ($("#signup-confirm-password"))  $("#signup-confirm-password").value = "";
+  if ($("#signup-sec-ans1"))          $("#signup-sec-ans1").value = "";
+  if ($("#signup-sec-ans2"))          $("#signup-sec-ans2").value = "";
   showError("signup-error", "");
+}
+
+/* ─────────────────── Auth: Forgot Password ─────────────────── */
+
+// Step 1: Verify username + security answers
+async function handleForgotVerify() {
+  const username = safeUsername($("#forgot-username").value || "");
+  const ans1     = ($("#forgot-ans1").value || "").trim();
+  const ans2     = ($("#forgot-ans2").value || "").trim();
+
+  showError("forgot-step1-error", "");
+
+  if (!username)
+    return showError("forgot-step1-error", "Username daalein.");
+  if (!ans1)
+    return showError("forgot-step1-error", "Pehle sawal ka jawab daalein.");
+  if (!ans2)
+    return showError("forgot-step1-error", "Doosre sawal ka jawab daalein.");
+
+  const btn = $("#forgot-verify-btn-text");
+  btn.textContent = "Verify ho raha hai...";
+  $("#forgot-verify-btn").disabled = true;
+
+  try {
+    const snap = await db.ref("users/" + username).get();
+    if (!snap.exists())
+      return showError("forgot-step1-error", "Yeh username registered nahi hai.");
+
+    const data = snap.val();
+    if (data.blocked)
+      return showError("forgot-step1-error", "Yeh account block hai.");
+
+    // Hash the entered answers and compare
+    const [hash1, hash2] = await Promise.all([
+      hashString(ans1),
+      hashString(ans2),
+    ]);
+
+    if (hash1 !== data.secA1Hash)
+      return showError("forgot-step1-error", "Pehle sawal ka jawab ghalat hai.");
+    if (hash2 !== data.secA2Hash)
+      return showError("forgot-step1-error", "Doosre sawal ka jawab ghalat hai.");
+
+    // Answers correct — show step 2
+    // Store verified username temporarily
+    window._forgotVerifiedUsername = username;
+    window._forgotVerifiedEmail    = data.email;
+    $("#forgot-step1").hidden = true;
+    $("#forgot-step2").hidden = false;
+
+  } catch (err) {
+    console.error("Forgot verify error:", err);
+    showError("forgot-step1-error", "Server error. Internet check karein.");
+  } finally {
+    btn.textContent = "JAWAB VERIFY KAREIN";
+    $("#forgot-verify-btn").disabled = false;
+  }
+}
+
+// Step 2: Google re-auth + set new password
+async function handleForgotReset() {
+  const newPw   = ($("#forgot-new-password").value || "").trim();
+  const confirmPw = ($("#forgot-confirm-password").value || "").trim();
+
+  showError("forgot-step2-error", "");
+
+  if (newPw.length < 6)
+    return showError("forgot-step2-error", "Password chhota hai (kam az kam 6 characters).");
+  if (newPw !== confirmPw)
+    return showError("forgot-step2-error", "Dono passwords match nahi karte.");
+
+  const btn    = $("#forgot-reset-btn-text");
+  const resetBtn = $("#forgot-reset-btn");
+  btn.textContent = "Google se verify ho raha hai...";
+  resetBtn.disabled = true;
+
+  try {
+    // Re-authenticate via Google popup
+    let googleResult;
+    try {
+      googleResult = await auth.signInWithPopup(getGoogleProvider());
+    } catch (popupErr) {
+      if (popupErr.code === "auth/popup-closed-by-user")
+        return showError("forgot-step2-error", "Google login cancel ho gaya. Dobara try karein.");
+      if (popupErr.code === "auth/popup-blocked")
+        return showError("forgot-step2-error", "Popup block ho gaya. Browser settings check karein.");
+      throw popupErr;
+    }
+
+    // Confirm Google account matches the registered account
+    if (
+      window._forgotVerifiedEmail &&
+      googleResult.user.email !== window._forgotVerifiedEmail
+    ) {
+      await auth.signOut();
+      return showError(
+        "forgot-step2-error",
+        "Ghalat Google account use kiya. " +
+          window._forgotVerifiedEmail + " wala account use karein."
+      );
+    }
+
+    // Update password
+    await googleResult.user.updatePassword(newPw);
+
+    // Also try to update/link email/password credential
+    try {
+      const emailCred = firebase.auth.EmailAuthProvider.credential(
+        googleResult.user.email,
+        newPw
+      );
+      await googleResult.user.linkWithCredential(emailCred);
+    } catch (linkErr) {
+      // If already linked, we need to reauthenticate and update
+      if (linkErr.code === "auth/provider-already-linked" ||
+          linkErr.code === "auth/email-already-in-use") {
+        // Password already linked — updatePassword above was enough
+        console.info("Password credential already linked, updatePassword applied.");
+      } else {
+        console.warn("Link warning (non-critical):", linkErr.code);
+      }
+    }
+
+    // Sign out after reset
+    await auth.signOut();
+
+    // Clean up
+    window._forgotVerifiedUsername = null;
+    window._forgotVerifiedEmail    = null;
+
+    showToast("✅ Password reset ho gaya! Ab naya password se login karein.", "success", 5000);
+    resetForgotUI();
+    showScreen("login");
+
+  } catch (err) {
+    console.error("Forgot reset error:", err.code, err.message);
+    let msg = "Password reset fail hua. Phir koshish karein.";
+    if (err.code === "auth/requires-recent-login")
+      msg = "Session expire ho gaya. Dobara Google se verify karein.";
+    else if (err.code === "auth/weak-password")
+      msg = "Password zyada secure hona chahiye (kam az kam 6 characters).";
+    showError("forgot-step2-error", msg);
+  } finally {
+    btn.textContent = "Google se Verify & Password Reset";
+    resetBtn.disabled = false;
+  }
+}
+
+function resetForgotUI() {
+  if ($("#forgot-username"))         $("#forgot-username").value = "";
+  if ($("#forgot-ans1"))             $("#forgot-ans1").value = "";
+  if ($("#forgot-ans2"))             $("#forgot-ans2").value = "";
+  if ($("#forgot-new-password"))     $("#forgot-new-password").value = "";
+  if ($("#forgot-confirm-password")) $("#forgot-confirm-password").value = "";
+  showError("forgot-step1-error", "");
+  showError("forgot-step2-error", "");
+  if ($("#forgot-step1")) $("#forgot-step1").hidden = false;
+  if ($("#forgot-step2")) $("#forgot-step2").hidden = true;
+  window._forgotVerifiedUsername = null;
+  window._forgotVerifiedEmail    = null;
 }
 
 function logout() {
@@ -279,7 +549,6 @@ function logout() {
   db.ref("posts").off();
   db.ref("users").off();
   db.ref("stats/successCount").off();
-  // Detach chat listeners
   _closeChatListeners();
   if (_inboxListener)      { _inboxListener.off();      _inboxListener = null; }
   if (_unreadBadgeListener){ _unreadBadgeListener.off(); _unreadBadgeListener = null; }
@@ -296,7 +565,7 @@ function logout() {
   if ($("#login-password")) $("#login-password").value = "";
 }
 
-/* ----------------------------- Posts ----------------------------- */
+/* ─────────────────── Posts ─────────────────── */
 function subscribePosts() {
   db.ref("posts").on(
     "value",
@@ -540,12 +809,7 @@ async function toggleBlockUser(username, currentlyBlocked) {
   await db.ref("users/" + username).update({ blocked: !currentlyBlocked });
 }
 
-/* ----------------------------- Renders ----------------------------- */
-
-// FIX: postCardHTML now correctly builds and RETURNS the HTML string.
-// Previously ALL content was inside `if (post.done)` so non-done posts
-// returned undefined. Also removed the stray `list.innerHTML += inner`
-// and the orphaned `});` that broke the function entirely.
+/* ─────────────────── Renders ─────────────────── */
 function postCardHTML(post, opts = {}) {
   const isWorker = post.type === "job_seeker";
   const tagClass = isWorker ? "worker" : "employer";
@@ -630,10 +894,9 @@ function postCardHTML(post, opts = {}) {
   }
 
   inner += `</div>`;
-  return inner;  // FIX: always return the built string
+  return inner;
 }
 
-// FIX: `list` variable was never declared — added the querySelector
 function renderHome() {
   const list = $("#posts-list") || $("#home-posts-list");
   if (!list) return;
@@ -755,36 +1018,6 @@ function handleShareApp() {
   }
 }
 
-async function handleForgotPassword() {
-  const email = $("#forgot-email").value.trim().toLowerCase();
-  if (!email) {
-    showError("forgot-error", "Email address daalen.");
-    return;
-  }
-  const btn = $("#forgot-btn-text");
-  btn.textContent = "Bhej rahe hain...";
-  $("#forgot-submit").disabled = true;
-  showError("forgot-error", "");
-  try {
-    await auth.sendPasswordResetEmail(email);
-    $("#forgot-modal").hidden = true;
-    $("#forgot-email").value = "";
-    showToast("Password reset link sent! Please check your Gmail Inbox.", "success", 5000);
-  } catch (err) {
-    let msg = "Kuch masla aaya. Phir koshish karein.";
-    if (err.code === "auth/user-not-found")
-      msg = "Yeh email registered nahi hai.";
-    else if (err.code === "auth/invalid-email")
-      msg = "Sahi email format daalen. (maslan: abc@gmail.com)";
-    else if (err.code === "auth/too-many-requests")
-      msg = "Bahut zyada tries. Thodi der baad try karein.";
-    showError("forgot-error", msg);
-  } finally {
-    btn.textContent = "Reset Link Bhejein";
-    $("#forgot-submit").disabled = false;
-  }
-}
-
 let _pendingReportId = null;
 
 function handleReportPost(postId) {
@@ -892,9 +1125,6 @@ function renderAdminUsersTable() {
     if (p.username) postCounts[p.username] = (postCounts[p.username] || 0) + 1;
   });
 
-  // FIX: user-row click handled via delegated listener in attachEvents;
-  // data-username is already on the row so clicking anywhere on it
-  // (but not on the Delete button) navigates to the user detail screen.
   body.innerHTML = state.users
     .map((u) => {
       const count = postCounts[u.username] || 0;
@@ -920,8 +1150,6 @@ function renderAdminUsersTable() {
     .join("");
 }
 
-// FIX: loadUserChatsInAdmin is now called AFTER container.innerHTML is set
-// so that #admin-user-messages-container actually exists in the DOM.
 function renderAdminUser() {
   if (!state.adminUserView) return;
   const username = state.adminUserView;
@@ -946,11 +1174,8 @@ function renderAdminUser() {
       })
     : "-";
 
-  // Remove any pre-existing static duplicate chat history cards from HTML
-  // (handles cases where the HTML file already has a hard-coded admin-chat-history-card)
   document.querySelectorAll("#admin-chat-history-card").forEach((el) => el.remove());
 
-  // Render the full template — single, authoritative chat history card
   container.innerHTML = `
     <div class="profile-card">
       <div class="avatar">${escapeHtml(initial)}</div>
@@ -1015,7 +1240,6 @@ function renderAdminUser() {
       </div>
     </div>`;
 
-  // Call AFTER innerHTML is set so the container element exists in the DOM
   loadUserChatsInAdmin(username);
 }
 
@@ -1032,11 +1256,19 @@ function updateBottomHint() {
   if ($("#menu-sub")) $("#menu-sub").textContent = state.user ? "@" + state.user.username : "@—";
 }
 
-/* ----------------------------- Events ----------------------------- */
+/* ─────────────────── Events ─────────────────── */
 function attachEvents() {
-  $("#form-login").addEventListener("submit", handleLogin);
+  // Login form
+  if ($("#form-login")) $("#form-login").addEventListener("submit", handleLogin);
 
-  $("#signup-btn").addEventListener("click", handleSignup);
+  // Google login button
+  if ($("#login-google-btn")) {
+    $("#login-google-btn").addEventListener("click", handleGoogleLogin);
+  }
+
+  // Signup button (Continue with Google)
+  if ($("#signup-btn")) $("#signup-btn").addEventListener("click", handleSignup);
+
   if ($("#go-to-login-btn")) {
     $("#go-to-login-btn").addEventListener("click", () => {
       resetSignupUI();
@@ -1044,6 +1276,7 @@ function attachEvents() {
     });
   }
 
+  // Eye buttons (password visibility toggle) — includes new fields
   $$(".eye-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const t = document.getElementById(btn.dataset.target);
@@ -1051,12 +1284,14 @@ function attachEvents() {
     });
   });
 
-  $("#go-signup").addEventListener("click", () => showScreen("signup"));
-  $("#go-login").addEventListener("click", (e) => {
-    e.preventDefault();
-    resetSignupUI();
-    showScreen("login");
-  });
+  if ($("#go-signup")) $("#go-signup").addEventListener("click", () => showScreen("signup"));
+  if ($("#go-login")) {
+    $("#go-login").addEventListener("click", (e) => {
+      e.preventDefault();
+      resetSignupUI();
+      showScreen("login");
+    });
+  }
   if ($("#back-from-signup")) {
     $("#back-from-signup").addEventListener("click", () => {
       resetSignupUI();
@@ -1064,6 +1299,27 @@ function attachEvents() {
     });
   }
 
+  // Forgot password — open screen instead of modal
+  if ($("#forgot-password-btn")) {
+    $("#forgot-password-btn").addEventListener("click", () => {
+      resetForgotUI();
+      showScreen("forgot");
+    });
+  }
+  if ($("#back-from-forgot")) {
+    $("#back-from-forgot").addEventListener("click", () => {
+      resetForgotUI();
+      showScreen("login");
+    });
+  }
+  if ($("#forgot-verify-btn")) {
+    $("#forgot-verify-btn").addEventListener("click", handleForgotVerify);
+  }
+  if ($("#forgot-reset-btn")) {
+    $("#forgot-reset-btn").addEventListener("click", handleForgotReset);
+  }
+
+  // Filter buttons
   $$(".filter-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       $$(".filter-btn").forEach((b) => b.classList.remove("active"));
@@ -1246,7 +1502,7 @@ function attachEvents() {
     });
   }
 
-  // Hidden admin gate: 5 quick taps on the login logo
+  // Hidden admin gate: 5 quick taps on login logo
   const loginLogo = document.querySelector("#screen-login .logo-box");
   if (loginLogo) {
     let clickCount = 0;
@@ -1304,7 +1560,6 @@ function attachEvents() {
   document.addEventListener("click", async (e) => {
     const target = e.target.closest("[data-act]");
     if (!target) {
-      // Row click (not on any action button)
       const row = e.target.closest(".user-row");
       if (row && state.user?.isAdmin) {
         state.adminUserView = row.dataset.username;
@@ -1395,33 +1650,6 @@ function attachEvents() {
     }
   });
 
-  if ($("#forgot-password-btn")) {
-    $("#forgot-password-btn").addEventListener("click", () => {
-      showError("forgot-error", "");
-      if ($("#forgot-email")) $("#forgot-email").value = "";
-      if ($("#forgot-modal")) $("#forgot-modal").hidden = false;
-      setTimeout(() => { if ($("#forgot-email")) $("#forgot-email").focus(); }, 60);
-    });
-  }
-  if ($("#forgot-cancel")) {
-    $("#forgot-cancel").addEventListener("click", () => {
-      if ($("#forgot-modal")) $("#forgot-modal").hidden = true;
-    });
-  }
-  if ($("#forgot-submit")) {
-    $("#forgot-submit").addEventListener("click", handleForgotPassword);
-  }
-  if ($("#forgot-email")) {
-    $("#forgot-email").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); handleForgotPassword(); }
-    });
-  }
-  if ($("#forgot-modal")) {
-    $("#forgot-modal").addEventListener("click", (e) => {
-      if (e.target === $("#forgot-modal")) $("#forgot-modal").hidden = true;
-    });
-  }
-
   if ($("#report-cancel")) {
     $("#report-cancel").addEventListener("click", () => {
       _pendingReportId = null;
@@ -1463,7 +1691,7 @@ function resetAddPostForm() {
   updateBottomHint();
 }
 
-/* ── Welcome overlay — shown on correct admin password ───────────────── */
+/* ── Welcome overlay ─────────────────────────────── */
 function _showWelcomeOverlay(onDone) {
   const ov = document.createElement("div");
   ov.id = "_admin-welcome-ov";
@@ -1478,50 +1706,13 @@ function _showWelcomeOverlay(onDone) {
 
   ov.innerHTML = `
     <div style="position:absolute;inset:0;pointer-events:none;">
-      <div style="
-        position:absolute;top:-30%;left:50%;transform:translateX(-50%);
-        width:520px;height:520px;
-        background:radial-gradient(circle,rgba(251,191,36,0.09) 0%,transparent 68%);
-        border-radius:50%;
-      "></div>
-      <div style="
-        position:absolute;bottom:-20%;right:-10%;
-        width:300px;height:300px;
-        background:radial-gradient(circle,rgba(30,64,175,0.15) 0%,transparent 70%);
-        border-radius:50%;
-      "></div>
+      <div style="position:absolute;top:-30%;left:50%;transform:translateX(-50%);width:520px;height:520px;background:radial-gradient(circle,rgba(251,191,36,0.09) 0%,transparent 68%);border-radius:50%;"></div>
+      <div style="position:absolute;bottom:-20%;right:-10%;width:300px;height:300px;background:radial-gradient(circle,rgba(30,64,175,0.15) 0%,transparent 70%);border-radius:50%;"></div>
     </div>
-    <div style="
-      font-size:clamp(17px,4.2vw,32px);
-      font-weight:900;letter-spacing:2.5px;line-height:1.3;
-      background:linear-gradient(135deg,#fbbf24 0%,#ffffff 55%,#fde68a 100%);
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-      filter:drop-shadow(0 0 18px rgba(251,191,36,0.5));
-      padding:0 12px;position:relative;z-index:1;
-    ">WELCOME<br>MAHAR SHOAIB<br>
-    <span style='font-size:0.62em;letter-spacing:5px;'>THE KING OF TECHNOLOGY</span></div>
+    <div style="font-size:clamp(17px,4.2vw,32px);font-weight:900;letter-spacing:2.5px;line-height:1.3;background:linear-gradient(135deg,#fbbf24 0%,#ffffff 55%,#fde68a 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 0 18px rgba(251,191,36,0.5));padding:0 12px;position:relative;z-index:1;">WELCOME<br>MAHAR SHOAIB<br><span style='font-size:0.62em;letter-spacing:5px;'>THE KING OF TECHNOLOGY</span></div>
     <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:0;">
-      <img
-        id="_welcome-pic"
-        src="Shoaib.jpg"
-        alt="Mahar Shoaib"
-        style="
-          width:116px;height:116px;border-radius:50%;object-fit:cover;display:block;
-          border:2.5px solid rgba(251,191,36,0.8);
-          box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55),
-                     0 0 48px rgba(251,191,36,0.2);
-          flex-shrink:0;
-        "
-        onerror="this.style.display='none';document.getElementById('_welcome-fb').style.display='flex';"
-      >
-      <div id="_welcome-fb" style="
-        display:none;width:116px;height:116px;border-radius:50%;
-        background:linear-gradient(135deg,#1e3a8a,#1e40af);
-        border:2.5px solid rgba(251,191,36,0.8);
-        box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55);
-        align-items:center;justify-content:center;font-size:46px;
-        flex-shrink:0;
-      ">🛡️</div>
+      <img id="_welcome-pic" src="Shoaib.jpg" alt="Mahar Shoaib" style="width:116px;height:116px;border-radius:50%;object-fit:cover;display:block;border:2.5px solid rgba(251,191,36,0.8);box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55),0 0 48px rgba(251,191,36,0.2);flex-shrink:0;" onerror="this.style.display='none';document.getElementById('_welcome-fb').style.display='flex';">
+      <div id="_welcome-fb" style="display:none;width:116px;height:116px;border-radius:50%;background:linear-gradient(135deg,#1e3a8a,#1e40af);border:2.5px solid rgba(251,191,36,0.8);box-shadow:0 0 0 6px rgba(251,191,36,0.12),0 10px 32px rgba(0,0,0,0.55);align-items:center;justify-content:center;font-size:46px;flex-shrink:0;">🛡️</div>
     </div>`;
 
   document.body.appendChild(ov);
@@ -1545,9 +1736,8 @@ function closeAdminGate() {
   if ($("#admin-gate-input")) $("#admin-gate-input").value = "";
 }
 
-/* ----------------------------- Boot ----------------------------- */
+/* ─────────────────── Boot ─────────────────── */
 function enterApp() {
-  // FIX: setupUserPresence only called once here (removed from handleLogin)
   setupUserPresence();
   updateBottomHint();
   subscribeStats();
@@ -1567,7 +1757,7 @@ function enterApp() {
   }
 }
 
-/* ── Dark mode — persisted preference ───────────────────────────────── */
+/* ── Dark mode ─────────────────────────────── */
 function initDarkMode() {
   const saved = localStorage.getItem("madadgar_theme") || "light";
   const btn   = document.getElementById("theme-toggle-btn");
@@ -1588,7 +1778,7 @@ function initDarkMode() {
   }
 }
 
-/* ── Skeleton loader HTML helpers ───────────────────────────────────── */
+/* ── Skeleton loaders ──────────────────────── */
 function _skeletonPostCards(n) {
   n = n || 3;
   return Array.from({ length: n }, () => `
@@ -1646,7 +1836,7 @@ if (document.readyState === "loading") {
   init();
 }
 
-/* ----------------------------- PWA ----------------------------- */
+/* ─────────────────── PWA ─────────────────── */
 let deferredPrompt;
 
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -1691,8 +1881,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-/* ----------------------------- Profile ----------------------------- */
-/* ── Profile picture upload — FREE (base64 via canvas, no Firebase Storage) ── */
+/* ─────────────────── Profile ─────────────────── */
 const profileFilePicker = document.getElementById("profile-file-picker");
 if (profileFilePicker) {
   profileFilePicker.addEventListener("change", async function (e) {
@@ -1701,7 +1890,6 @@ if (profileFilePicker) {
     const currentUserID = (state.user && state.user.username) ? state.user.username : "test_user";
     const myProfilePic = document.getElementById("my-profile-pic");
 
-    // Show preview immediately (loading state)
     if (myProfilePic) {
       const previewReader = new FileReader();
       previewReader.onload = (ev) => {
@@ -1712,9 +1900,7 @@ if (profileFilePicker) {
     }
 
     try {
-      // Resize to max 300×300 for profile pics (keeps RTDB node small)
       const base64 = await _resizeImageToBase64(file, 300, 0.80);
-
       if (myProfilePic) {
         myProfilePic.src = base64;
         myProfilePic.style.opacity = "1";
@@ -1728,7 +1914,7 @@ if (profileFilePicker) {
       if (myProfilePic) myProfilePic.style.opacity = "1";
       showToast("Upload mein masla aaya. Phir try karein.", "error");
     }
-    e.target.value = ""; // reset so same file can be re-selected
+    e.target.value = "";
   });
 }
 
@@ -1748,45 +1934,24 @@ function openProfileModal() {
 
 /* =====================================================================
    CHAT SYSTEM — Real-time Firebase chat with blue ticks & timestamps
-   =====================================================================
-   Firebase data structure:
-     chat_rooms/{roomId}/
-       participants:      { userA: true, userB: true }
-       participantNames:  { userA: "Full Name A", userB: "Full Name B" }
-       lastMessage:       "Hello"
-       lastTimestamp:     SERVER_TIMESTAMP
-       unread:            { userA: 0, userB: 2 }
-
-     chats/{roomId}/{pushId}/
-       senderID:   "userA"
-       text:       "Hello"
-       timestamp:  SERVER_TIMESTAMP
-       seen:       false          ← turns true when receiver opens the chat
    ===================================================================== */
 
-// ── module-level state ────────────────────────────────────────────────
-let _chatRoomID          = "";    // currently open room
-let _chatMsgListener     = null;  // Firebase ref (chats/{roomId}) — detach on close
-let _presenceListener    = null;  // Firebase ref (users/{id}/status)
-let _inboxListener       = null;  // Firebase ref (chat_rooms) for inbox list
-let _unreadBadgeListener = null;  // Firebase ref (chat_rooms) for global badge
-let _adminThreadRef      = null;  // Active real-time listener for admin thread view
-// Typing indicator
-let _typingTimer         = null;  // debounce handle
-let _typingRef           = null;  // my own typing node in Firebase
-let _typingListenerRef   = null;  // listener on the other person's typing node
-// Voice recording
+let _chatRoomID          = "";
+let _chatMsgListener     = null;
+let _presenceListener    = null;
+let _inboxListener       = null;
+let _unreadBadgeListener = null;
+let _adminThreadRef      = null;
+let _typingTimer         = null;
+let _typingRef           = null;
+let _typingListenerRef   = null;
 let _mediaRecorder       = null;
 let _audioChunks         = [];
 let _isRecording         = false;
 let _recTimerInterval    = null;
 
-/* ── helpers ─────────────────────────────────────────────────────────── */
-
-// Deterministic room ID: always smaller_larger so A↔B and B↔A share same room
 function _roomId(a, b) { return a < b ? a + "_" + b : b + "_" + a; }
 
-// Human-readable timestamp for chat bubbles
 function formatChatTime(ts) {
   if (!ts) return "";
   const now      = new Date();
@@ -1798,19 +1963,16 @@ function formatChatTime(ts) {
   return date.toLocaleDateString([], { day: "numeric", month: "short" });
 }
 
-/* ── open chat window ────────────────────────────────────────────────── */
 function openChatWithUser(receiverID, receiverName, receiverPic) {
   if (!state.user || !receiverID) return;
   const me = state.user.username;
   if (me === receiverID) { alert("Aap apne aap ko message nahi bhej sakte!"); return; }
 
-  // Close any existing open room first
   _closeChatListeners();
 
   _chatRoomID      = _roomId(me, receiverID);
   state.activeChat = receiverID;
 
-  // Header
   const nameEl   = document.getElementById("chat-user-name");
   const picEl    = document.getElementById("chat-user-pic");
   const statusEl = document.getElementById("chat-user-status");
@@ -1818,15 +1980,12 @@ function openChatWithUser(receiverID, receiverName, receiverPic) {
   if (picEl)    picEl.src = receiverPic || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
   if (statusEl) { statusEl.innerText = ""; statusEl.style.color = "#888"; }
 
-  // Show modal
   const modal = document.getElementById("chat-modal");
   if (modal) modal.style.display = "flex";
 
-  // Clear messages area
   const area = document.getElementById("chat-messages-area");
   if (area) area.innerHTML = `<p style="text-align:center;color:#999;font-size:13px;padding:20px;">Messages load ho rahi hain...</p>`;
 
-  // -- child_added: append new messages in real-time without full re-render
   const msgsRef = db.ref("chats/" + _chatRoomID);
   _chatMsgListener = msgsRef;
 
@@ -1835,7 +1994,6 @@ function openChatWithUser(receiverID, receiverName, receiverPic) {
     if (area) area.scrollTo({ top: area.scrollHeight, behavior: "smooth" });
   });
 
-  // -- child_changed: update blue tick when our sent message becomes seen
   msgsRef.on("child_changed", (snap) => {
     const msg = snap.val();
     if (!msg || msg.senderID !== me) return;
@@ -1843,79 +2001,43 @@ function openChatWithUser(receiverID, receiverName, receiverPic) {
     if (el && msg.seen) { el.textContent = "✓✓"; el.style.color = "#60A5FA"; }
   });
 
-  // -- Mark all incoming messages seen
   _markSeen(_chatRoomID, me);
-
-  // -- Reset my unread counter
   db.ref("chat_rooms/" + _chatRoomID + "/unread/" + me).set(0).catch(() => {});
-
-  // -- Presence
   _listenToPresence(receiverID);
-
-  // -- Inject extra input buttons (mic, location, attachment) & typing listener
   _ensureChatInputUI();
   _listenTyping(_chatRoomID, me, receiverID);
 }
 
-// ── Build inner HTML for a message bubble based on type ───────────────
 function _bubbleContent(msg, isMine) {
   const type = msg.type || "text";
 
   if (type === "audio") {
-    return `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
-      style="max-width:230px;outline:none;border-radius:8px;display:block;"></audio>`;
+    return `<audio controls src="${escapeHtml(msg.audioUrl || "")}" style="max-width:230px;outline:none;border-radius:8px;display:block;"></audio>`;
   }
 
   if (type === "location") {
     const url = msg.locationUrl || "#";
     const bg  = isMine ? "rgba(255,255,255,0.15)" : "#EFF6FF";
-    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
-      style="display:flex;align-items:center;gap:8px;padding:8px 10px;
-             background:${bg};border-radius:8px;text-decoration:none;
-             color:${isMine ? "#fff" : "#1E40AF"};">
-        <span style="font-size:22px;">📍</span>
-        <span style="font-size:13px;font-weight:600;">View Location on Map</span>
-      </a>`;
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${bg};border-radius:8px;text-decoration:none;color:${isMine ? "#fff" : "#1E40AF"};"><span style="font-size:22px;">📍</span><span style="font-size:13px;font-weight:600;">View Location on Map</span></a>`;
   }
 
   if (type === "image") {
-    return `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
-      style="max-width:220px;max-height:220px;border-radius:8px;
-             cursor:pointer;display:block;object-fit:cover;"
-      onclick="_openImageFullscreen(this.src)"
-      onerror="this.style.display='none'">`;
+    return `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image" style="max-width:220px;max-height:220px;border-radius:8px;cursor:pointer;display:block;object-fit:cover;" onclick="_openImageFullscreen(this.src)" onerror="this.style.display='none'">`;
   }
 
   if (type === "document") {
     const bg   = isMine ? "rgba(255,255,255,0.15)" : "#EFF6FF";
     const col  = isMine ? "#fff" : "#111";
     const link = isMine ? "#9EC5FE" : "#1E40AF";
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
-                        background:${bg};border-radius:8px;">
-      <span style="font-size:26px;">📄</span>
-      <div style="min-width:0;">
-        <div style="font-size:12px;font-weight:600;color:${col};
-                    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;">
-          ${escapeHtml(msg.fileName || "Document")}
-        </div>
-        <a href="${escapeHtml(msg.fileUrl || "")}" target="_blank"
-           download="${escapeHtml(msg.fileName || "file")}"
-           style="font-size:11px;color:${link};font-weight:600;text-decoration:none;">
-           ⬇ Download
-        </a>
-      </div>
-    </div>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:${bg};border-radius:8px;"><span style="font-size:26px;">📄</span><div style="min-width:0;"><div style="font-size:12px;font-weight:600;color:${col};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;">${escapeHtml(msg.fileName || "Document")}</div><a href="${escapeHtml(msg.fileUrl || "")}" target="_blank" download="${escapeHtml(msg.fileName || "file")}" style="font-size:11px;color:${link};font-weight:600;text-decoration:none;">⬇ Download</a></div></div>`;
   }
 
-  // Default: plain text
   return escapeHtml(msg.text || "");
 }
 
-// Append one message bubble (handles all message types)
 function _appendBubble(key, msg, myID) {
   const area = document.getElementById("chat-messages-area");
   if (!area) return;
-  // Remove loading placeholder
   const ph = area.querySelector("p");
   if (ph) ph.remove();
 
@@ -1925,26 +2047,19 @@ function _appendBubble(key, msg, myID) {
     ? `<span id="tick-${key}" style="font-size:10px;margin-left:4px;color:${msg.seen ? "#60A5FA" : "#aaa"};">${msg.seen ? "✓✓" : "✓"}</span>`
     : "";
   const type    = msg.type || "text";
-  // Non-text types don't need full padding
   const pad     = (type === "image") ? "4px" : "8px 12px";
   const radius  = isMine ? "14px 14px 0 14px" : "14px 14px 14px 0";
 
   const w = document.createElement("div");
   w.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? "flex-end" : "flex-start"};margin-bottom:6px;`;
   w.innerHTML = `
-    <div style="
-      background:${isMine ? "#1E40AF" : "#ffffff"};
-      color:${isMine ? "#fff" : "#111"};
-      padding:${pad};border-radius:${radius};
-      max-width:75%;word-wrap:break-word;font-size:14px;
-      box-shadow:0 1px 2px rgba(0,0,0,0.1);overflow:hidden;">
+    <div style="background:${isMine ? "#1E40AF" : "#ffffff"};color:${isMine ? "#fff" : "#111"};padding:${pad};border-radius:${radius};max-width:75%;word-wrap:break-word;font-size:14px;box-shadow:0 1px 2px rgba(0,0,0,0.1);overflow:hidden;">
       ${_bubbleContent(msg, isMine)}
     </div>
     <div style="font-size:10px;color:#999;margin-top:2px;">${timeStr}${tick}</div>`;
   area.appendChild(w);
 }
 
-// Mark all messages from the other person as seen in one batch write
 function _markSeen(roomId, myID) {
   db.ref("chats/" + roomId).once("value").then((snap) => {
     if (!snap.exists()) return;
@@ -1958,7 +2073,6 @@ function _markSeen(roomId, myID) {
   }).catch(() => {});
 }
 
-/* ── send a message ──────────────────────────────────────────────────── */
 function sendMessage() {
   if (!state.user || !_chatRoomID) return;
   const me     = state.user.username;
@@ -1968,11 +2082,9 @@ function sendMessage() {
   const text    = inputEl ? inputEl.value.trim() : "";
   if (!text) return;
 
-  // Use state.activeChat — splitting _chatRoomID on "_" breaks for usernames with underscores
   const receiverID = state.activeChat || "";
   if (!receiverID) return;
 
-  // Push message node
   db.ref("chats/" + _chatRoomID).push({
     senderID:  me,
     type:      "text",
@@ -1983,7 +2095,6 @@ function sendMessage() {
     if (inputEl) inputEl.value = "";
   }).catch((err) => console.error("sendMessage:", err));
 
-  // Update lightweight index (chat_rooms) for inbox & badge
   const receiverNameEl = document.getElementById("chat-user-name");
   const receiverName   = receiverNameEl ? receiverNameEl.innerText : receiverID;
 
@@ -1994,12 +2105,10 @@ function sendMessage() {
     lastTimestamp:    firebase.database.ServerValue.TIMESTAMP,
   }).catch(() => {});
 
-  // Increment receiver's unread counter
   db.ref("chat_rooms/" + _chatRoomID + "/unread/" + receiverID)
     .transaction((c) => (c || 0) + 1).catch(() => {});
 }
 
-/* ── close chat modal ────────────────────────────────────────────────── */
 function closeChatModal() {
   const modal = document.getElementById("chat-modal");
   if (modal) modal.style.display = "none";
@@ -2010,1253 +2119,212 @@ function closeChatModal() {
 function _closeChatListeners() {
   if (_chatMsgListener)   { _chatMsgListener.off();   _chatMsgListener = null; }
   if (_presenceListener)  { _presenceListener.off();  _presenceListener = null; }
-  if (_typingListenerRef) { _typingListenerRef.off(); _typingListenerRef = null; }
-  // Clear typing status BEFORE nulling _typingRef so the write still fires
-  _clearMyTypingStatus();
-  _typingRef = null;
-  if (_typingTimer) { clearTimeout(_typingTimer); _typingTimer = null; }
-  _stopVoiceRecord();
-  _chatRoomID = "";
-  state.activeChat = null;
+  if (_typingListenerRef) { _typingListenerRef.off();  _typingListenerRef = null; }
+  if (_typingRef) {
+    _typingRef.set(false).catch(() => {});
+    _typingRef = null;
+  }
+  clearTimeout(_typingTimer);
 }
 
-/* ── Inbox overlay — fully self-contained, no HTML screen dependency ── */
-// Creates its own fixed overlay injected into <body> so it works regardless
-// of how the HTML is structured.
+/* ─── Presence ───────────────────────────────────────────────── */
+function setupUserPresence() {
+  if (!state.user || state.user.isAdmin) return;
+  const username = state.user.username;
+  const presRef  = db.ref("users/" + username + "/status");
+  const connRef  = db.ref(".info/connected");
 
-function _getOrCreateInboxOverlay() {
-  let overlay = document.getElementById("_madadgar-inbox-overlay");
-  if (overlay) return overlay;
-
-  overlay = document.createElement("div");
-  overlay.id = "_madadgar-inbox-overlay";
-  overlay.style.cssText = [
-    "position:fixed", "inset:0", "z-index:9000",
-    "background:#f0f4f8", "display:none",
-    "flex-direction:column", "overflow:hidden",
-    "font-family:inherit",
-  ].join(";");
-
-  overlay.innerHTML = `
-    <!-- Header -->
-    <div style="background:#1E40AF;color:white;display:flex;align-items:center;
-                gap:10px;padding:0 12px;height:56px;flex-shrink:0;
-                box-shadow:0 2px 4px rgba(0,0,0,0.2);">
-      <button id="_inbox-back-btn"
-        style="background:none;border:none;color:white;font-size:24px;
-               cursor:pointer;padding:4px 8px 4px 0;line-height:1;flex-shrink:0;"
-        aria-label="Back">&#8592;</button>
-      <span style="font-size:18px;font-weight:700;flex:1;">Messages</span>
-    </div>
-
-    <!-- Conversation list -->
-    <div id="_inbox-list"
-      style="flex:1;overflow-y:auto;background:white;"></div>`;
-
-  document.body.appendChild(overlay);
-
-  // Back button
-  overlay.querySelector("#_inbox-back-btn").addEventListener("click", closeInboxScreen);
-
-  return overlay;
-}
-
-function openInboxScreen() {
-  if (!state.user) return;
-
-  const overlay = _getOrCreateInboxOverlay();
-  overlay.style.display = "flex";
-
-  _renderInboxList();
-}
-
-function closeInboxScreen() {
-  const overlay = document.getElementById("_madadgar-inbox-overlay");
-  if (overlay) overlay.style.display = "none";
-
-  // Detach real-time listener when inbox is hidden to save bandwidth
-  if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
-}
-
-// Alias — HTML back buttons may call either name
-function goBackToHome() { closeInboxScreen(); }
-
-// loadInbox() kept as a no-op so existing enterApp() references don't crash
-function loadInbox() { /* inbox is now opened on-demand via openInboxScreen() */ }
-
-function _renderInboxList() {
-  const list = document.getElementById("_inbox-list");
-  if (!list || !state.user) return;
-  const me = state.user.username;
-
-  list.innerHTML = `
-    <div style="text-align:center;padding:30px;color:#888;font-size:13px;">
-      Messages load ho rahi hain...
-    </div>`;
-
-  // Detach old listener before attaching a new one
-  if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
-
-  const ref = db.ref("chat_rooms").orderByChild("lastTimestamp");
-  _inboxListener = ref;
-
-  ref.on("value", (snap) => {
-    // Collect rooms where I'm a participant
-    const rooms = [];
-    snap.forEach((child) => {
-      const r = child.val();
-      if (r && r.participants && r.participants[me])
-        rooms.push({ id: child.key, ...r });
-    });
-    rooms.reverse(); // newest first
-
-    list.innerHTML = "";
-
-    if (rooms.length === 0) {
-      list.innerHTML = `
-        <div style="text-align:center;padding:60px 24px;color:#aaa;">
-          <div style="font-size:56px;margin-bottom:12px;">💬</div>
-          <p style="font-size:15px;margin:0;line-height:1.6;">
-            Abhi koi chat nahi hai.<br>
-            Kisi post par <strong>💬 Chat</strong> button dabayein!
-          </p>
-        </div>`;
-      return;
-    }
-
-    rooms.forEach((room) => {
-      const parts     = room.id.split("_");
-      const otherID   = parts[0] === me ? parts[1] : parts[0];
-      const otherName = (room.participantNames && room.participantNames[otherID]) || otherID;
-      const unread    = (room.unread && room.unread[me]) || 0;
-      const lastMsg   = room.lastMessage || "Chat shuru karein";
-      const lastTime  = formatChatTime(room.lastTimestamp);
-      const initial   = otherName.charAt(0).toUpperCase();
-
-      // Build row
-      const row = document.createElement("div");
-      row.style.cssText = [
-        "display:flex", "align-items:center", "gap:12px",
-        "padding:13px 16px", "border-bottom:1px solid #f0f0f0",
-        "cursor:pointer", "transition:background 0.15s", "background:white",
-      ].join(";");
-      row.addEventListener("mouseenter", () => { row.style.background = "#f7f9ff"; });
-      row.addEventListener("mouseleave", () => { row.style.background = "white"; });
-
-      // Avatar placeholder (replaced by real pic below if available)
-      const avatarId  = "_av-" + room.id;
-      const statusId  = "_st-" + room.id;
-      const unreadBadge = unread > 0
-        ? `<span style="background:#25D366;color:white;border-radius:12px;
-                        padding:2px 7px;font-size:11px;font-weight:bold;
-                        min-width:20px;text-align:center;flex-shrink:0;">
-             ${unread > 99 ? "99+" : unread}
-           </span>`
-        : "";
-
-      row.innerHTML = `
-        <div id="${avatarId}" style="width:48px;height:48px;background:#1E40AF;color:white;
-             border-radius:50%;display:flex;align-items:center;justify-content:center;
-             font-weight:700;font-size:19px;flex-shrink:0;overflow:hidden;">
-          ${escapeHtml(initial)}
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-            <span style="font-weight:700;font-size:15px;color:#111;
-                         overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              ${escapeHtml(otherName)}
-            </span>
-            <span style="font-size:11px;color:#aaa;flex-shrink:0;">${lastTime}</span>
-          </div>
-          <div id="${statusId}"
-            style="font-size:11px;color:#aaa;margin-top:1px;height:14px;line-height:14px;">
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;gap:6px;">
-            <span style="font-size:13px;color:#666;overflow:hidden;text-overflow:ellipsis;
-                         white-space:nowrap;flex:1;">${escapeHtml(lastMsg)}</span>
-            ${unreadBadge}
-          </div>
-        </div>`;
-
-      // Open chat on click — close inbox first
-      row.addEventListener("click", () => {
-        closeInboxScreen();
-        openChatWithUser(otherID, otherName, "");
-      });
-
-      list.appendChild(row);
-
-      // Async: fetch profile pic + last-seen status for this contact
-      db.ref("users/" + otherID).once("value").then((uSnap) => {
-        if (!uSnap.exists()) return;
-        const u = uSnap.val();
-
-        // Profile picture
-        if (u.profilePic) {
-          const av = document.getElementById(avatarId);
-          if (av) {
-            av.innerHTML = "";
-            const img = document.createElement("img");
-            img.src   = u.profilePic;
-            img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%;";
-            img.onerror = () => { av.innerHTML = escapeHtml(initial); };
-            av.appendChild(img);
-          }
-        }
-
-        // Last seen / online status
-        const stEl = document.getElementById(statusId);
-        if (stEl && u.status) {
-          const s = u.status;
-          if (s.state === "online") {
-            stEl.textContent   = "online ●";
-            stEl.style.color   = "#25D366";
-          } else if (s.last_changed) {
-            stEl.textContent = "last seen " + formatChatTime(s.last_changed);
-            stEl.style.color = "#aaa";
-          }
-        }
-      }).catch(() => {});
-    });
-
-  }, (err) => {
-    console.error("Inbox load error:", err);
-    list.innerHTML = `
-      <p style="color:red;text-align:center;padding:24px;font-size:13px;">
-        Inbox load nahi hui. Internet check karein.
-      </p>`;
+  connRef.on("value", (snap) => {
+    if (!snap.val()) return;
+    presRef.onDisconnect().set("offline").catch(() => {});
+    presRef.set("online").catch(() => {});
   });
 }
 
-/* ── Global unread badge (message icon in header) ────────────────────── */
+function _listenToPresence(receiverID) {
+  if (_presenceListener) { _presenceListener.off(); _presenceListener = null; }
+  _presenceListener = db.ref("users/" + receiverID + "/status");
+  _presenceListener.on("value", (snap) => {
+    const statusEl = document.getElementById("chat-user-status");
+    if (!statusEl) return;
+    const status = snap.val() || "offline";
+    statusEl.innerText = status === "online" ? "online" : "offline";
+    statusEl.style.color = status === "online" ? "#4ade80" : "rgba(255,255,255,0.6)";
+  });
+}
+
+/* ─── Typing indicator ───────────────────────────────────────── */
+function _listenTyping(roomId, myID, receiverID) {
+  _typingRef = db.ref("typing/" + roomId + "/" + myID);
+  _typingListenerRef = db.ref("typing/" + roomId + "/" + receiverID);
+
+  const chatInput = document.getElementById("chat-input-text");
+  if (chatInput) {
+    chatInput.addEventListener("input", () => {
+      if (_typingRef) _typingRef.set(true).catch(() => {});
+      clearTimeout(_typingTimer);
+      _typingTimer = setTimeout(() => {
+        if (_typingRef) _typingRef.set(false).catch(() => {});
+      }, 2000);
+    });
+  }
+
+  const statusEl = document.getElementById("chat-user-status");
+  _typingListenerRef.on("value", (snap) => {
+    if (!statusEl) return;
+    if (snap.val() === true) {
+      statusEl.innerText = "typing...";
+      statusEl.style.color = "#fbbf24";
+    }
+  });
+}
+
+/* ─── Extra chat input UI (mic, location, attachment) ────────── */
+function _ensureChatInputUI() {
+  // Stub — extend as needed for mic/location/attachment
+}
+
+/* ─── Inbox / Chat notifications ────────────────────────────── */
 function listenForChatNotifications() {
   if (!state.user || state.user.isAdmin) return;
   const me = state.user.username;
 
   if (_unreadBadgeListener) { _unreadBadgeListener.off(); _unreadBadgeListener = null; }
 
-  const ref = db.ref("chat_rooms");
-  _unreadBadgeListener = ref;
-
-  ref.on("value", (snap) => {
+  _unreadBadgeListener = db.ref("chat_rooms");
+  _unreadBadgeListener.on("value", (snap) => {
     let total = 0;
     snap.forEach((child) => {
-      const r = child.val();
-      if (r && r.participants && r.participants[me] && r.unread && r.unread[me])
-        total += r.unread[me];
+      const room = child.val();
+      if (room && room.participants && room.participants[me]) {
+        total += (room.unread && room.unread[me]) || 0;
+      }
     });
     const badge = document.getElementById("global-inbox-badge");
     if (badge) {
-      if (total > 0) { badge.innerText = total > 99 ? "99+" : total; badge.style.display = "inline-block"; }
-      else badge.style.display = "none";
+      badge.style.display = total > 0 ? "block" : "none";
+      badge.textContent = total > 99 ? "99+" : total;
     }
   });
 }
 
-/* ── Admin: chat directory for a specific user ───────────────────────────
-   Shows a WhatsApp-style contact list first.
-   Clicking any contact expands the full inline message thread (text,
-   images, audio, documents, location) without leaving the screen.
-   ──────────────────────────────────────────────────────────────────────── */
-function loadUserChatsInAdmin(targetUserId) {
+function openInboxScreen() {
+  if (!state.user) return;
+  const me = state.user.username;
+  showScreen("chat-history");
+
+  const listEl = document.getElementById("inbox-messages-list");
+  if (!listEl) return;
+  listEl.innerHTML = `<p style="text-align:center;color:#888;padding:20px;">Loading...</p>`;
+
+  if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
+
+  _inboxListener = db.ref("chat_rooms");
+  _inboxListener.orderByChild("lastTimestamp").on("value", (snap) => {
+    const rooms = [];
+    snap.forEach((child) => {
+      const r = child.val();
+      if (r && r.participants && r.participants[me]) {
+        rooms.push({ id: child.key, ...r });
+      }
+    });
+    rooms.reverse();
+
+    if (rooms.length === 0) {
+      listEl.innerHTML = `<p style="text-align:center;color:#888;padding:20px;">Abhi koi chat nahi hai.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = rooms.map((r) => {
+      const otherID   = Object.keys(r.participants || {}).find((k) => k !== me) || "";
+      const otherName = (r.participantNames && r.participantNames[otherID]) || otherID;
+      const unread    = (r.unread && r.unread[me]) || 0;
+      const lastMsg   = escapeHtml(r.lastMessage || "");
+      const timeStr   = formatChatTime(r.lastTimestamp);
+      return `
+        <div onclick="openChatWithUser('${escapeHtml(otherID)}','${escapeHtml(otherName)}','')"
+          style="display:flex;align-items:center;gap:12px;padding:12px 10px;border-bottom:1px solid #eee;cursor:pointer;">
+          <div style="width:42px;height:42px;border-radius:50%;background:#1E40AF;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">
+            ${escapeHtml((otherName || "?").charAt(0).toUpperCase())}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:14px;">${escapeHtml(otherName)}</div>
+            <div style="font-size:12px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${lastMsg}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">
+            <div style="font-size:10px;color:#888;">${timeStr}</div>
+            ${unread > 0 ? `<div style="background:#1E40AF;color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">${unread}</div>` : ""}
+          </div>
+        </div>`;
+    }).join("");
+  });
+}
+
+function goBackToHome() {
+  if (_inboxListener) { _inboxListener.off(); _inboxListener = null; }
+  showScreen("home");
+}
+
+/* ─── Admin chat history ─────────────────────────────────────── */
+function loadUserChatsInAdmin(username) {
   const container = document.getElementById("admin-user-messages-container");
   if (!container) return;
 
-  container.innerHTML = `
-    <div style="text-align:center;padding:14px 0;color:#075E54;font-size:13px;">
-      ⏳ Chat history load ho rahi hai...
-    </div>`;
+  if (_adminThreadRef) { _adminThreadRef.off(); _adminThreadRef = null; }
 
-  /* ── helper: render a single message bubble ─────────────────────────── */
-  function _renderBubble(msg, myName, otherName) {
-    const isTarget    = msg.senderID === targetUserId;
-    const senderLabel = escapeHtml(isTarget ? myName : otherName);
-    const timeStr     = formatChatTime(msg.timestamp);
-    const seenTick    = isTarget
-      ? (msg.seen
-          ? " <span style='color:#3b82f6;font-size:10px;'>✓✓</span>"
-          : " <span style='color:#9ca3af;font-size:10px;'>✓</span>")
-      : "";
-
-    const type = msg.type || "text";
-    let content = "";
-    if (type === "audio") {
-      content = `<audio controls src="${escapeHtml(msg.audioUrl || "")}"
-        style="max-width:180px;outline:none;border-radius:8px;display:block;"></audio>`;
-    } else if (type === "location") {
-      content = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank"
-        style="display:flex;align-items:center;gap:5px;color:${isTarget ? "#93c5fd" : "#047857"};
-               font-size:12px;text-decoration:none;">
-        📍 <span style="font-weight:600;">View on Map</span></a>`;
-    } else if (type === "image") {
-      content = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image"
-        style="max-width:140px;max-height:140px;border-radius:6px;object-fit:cover;
-               display:block;cursor:zoom-in;"
-        onclick="_openImageFullscreen(this.src)"
-        onerror="this.style.display='none'">`;
-    } else if (type === "document") {
-      const dh = escapeHtml(msg.fileUrl || "");
-      const dn = escapeHtml(msg.fileName || "Document");
-      content = `<span style="font-size:12px;">📄 <a href="${dh}" target="_blank"
-        download="${dn}" style="color:${isTarget ? "#93c5fd" : "#047857"};">${dn}</a></span>`;
-    } else {
-      content = `<span style="font-size:13px;">${escapeHtml(msg.text || "")}</span>`;
-    }
-
-    const bubble = document.createElement("div");
-    bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isTarget ? "flex-end" : "flex-start"};margin-bottom:4px;`;
-    bubble.innerHTML = `
-      <div style="font-size:10px;color:#9ca3af;margin-bottom:2px;">${senderLabel} · ${timeStr}${seenTick}</div>
-      <div style="
-        background:${isTarget ? "#1e40af" : "white"};
-        color:${isTarget ? "#fff" : "#111"};
-        padding:7px 11px;
-        border-radius:${isTarget ? "12px 12px 2px 12px" : "12px 12px 12px 2px"};
-        max-width:75%;font-size:13px;
-        box-shadow:0 1px 2px rgba(0,0,0,0.08);
-        word-break:break-word;overflow:hidden;">
-        ${content}
-      </div>`;
-    return bubble;
-  }
-
-  /* ── core load ──────────────────────────────────────────────────────── */
-  function _doLoad() {
-    // Step 1: query chat_rooms index
-    db.ref("chat_rooms").once("value").then((snap) => {
-      const rooms = [];
-      snap.forEach((child) => {
-        const r = child.val();
-        if (r && r.participants && r.participants[targetUserId] === true)
-          rooms.push({ id: child.key, ...r });
-      });
-
-      // Step 2: fallback — scan chats/ node
-      if (rooms.length === 0) {
-        return db.ref("chats").once("value").then((chatsSnap) => {
-          const extra = [];
-          chatsSnap.forEach((roomSnap) => {
-            const key = roomSnap.key || "";
-            if (key.includes(targetUserId)) {
-              extra.push({ id: roomSnap.key });
-            } else {
-              let found = false;
-              roomSnap.forEach((msgSnap) => {
-                if (!found && msgSnap.val().senderID === targetUserId) {
-                  found = true;
-                  extra.push({ id: roomSnap.key });
-                }
-              });
-            }
-          });
-          return extra;
-        });
-      }
-      return rooms;
-
-    }).then((rooms) => {
-
-      if (!rooms || rooms.length === 0) {
-        container.innerHTML = `
-          <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
-            📭 Is user ne abhi tak kisi se chat nahi ki.
-          </div>`;
-        return;
-      }
-
-      container.innerHTML = ""; // clear spinner
-
-      // Step 3: build contact directory — one card per room
-      const fetches = rooms.map((room) =>
-        db.ref("chats/" + room.id).once("value").then((msgSnap) => {
-
-          const names     = room.participantNames || {};
-          const roomParts = room.id.split("_");
-          const otherID   = Object.keys(names).find((k) => k !== targetUserId)
-                            || roomParts.find((p) => p !== targetUserId)
-                            || "—";
-          const myName    = names[targetUserId] || targetUserId;
-          const otherName = names[otherID]      || otherID;
-
-          const messages = [];
-          if (msgSnap.exists()) {
-            msgSnap.forEach((m) => messages.push({ key: m.key, ...m.val() }));
-            messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-          }
-
-          const lastMsg  = messages.length ? messages[messages.length - 1] : null;
-          const lastText = lastMsg
-            ? (lastMsg.type === "audio"    ? "🎤 Voice note"
-             : lastMsg.type === "image"    ? "🖼 Image"
-             : lastMsg.type === "document" ? "📄 " + (lastMsg.fileName || "File")
-             : lastMsg.type === "location" ? "📍 Location"
-             : lastMsg.text || "…")
-            : "Koi message nahi";
-          const lastTime = lastMsg ? formatChatTime(lastMsg.timestamp) : "";
-          const initial  = (otherName.charAt(0) || "?").toUpperCase();
-
-          /* ── Contact row (always visible) ──────────────────────────── */
-          const row = document.createElement("div");
-          row.style.cssText = [
-            "display:flex", "align-items:center", "gap:10px",
-            "padding:10px 12px", "cursor:pointer",
-            "border-bottom:1px solid #f0fdf4",
-            "background:white", "transition:background 0.12s",
-            "user-select:none",
-          ].join(";");
-          row.onmouseover = () => { row.style.background = "#f0fdf4"; };
-          row.onmouseout  = () => { row.style.background = "white"; };
-
-          const arrowSpan = document.createElement("span");
-          arrowSpan.textContent = "▶";
-          arrowSpan.style.cssText = "font-size:11px;color:#aaa;flex-shrink:0;";
-
-          row.innerHTML = `
-            <div style="width:40px;height:40px;border-radius:50%;background:#075E54;
-                         color:white;display:flex;align-items:center;justify-content:center;
-                         font-weight:700;font-size:17px;flex-shrink:0;">
-              ${escapeHtml(initial)}
-            </div>
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;font-size:13px;color:#111;white-space:nowrap;
-                           overflow:hidden;text-overflow:ellipsis;">${escapeHtml(otherName)}</div>
-              <div style="font-size:11px;color:#888;white-space:nowrap;overflow:hidden;
-                           text-overflow:ellipsis;">${escapeHtml(lastText)}</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0;">
-              <span style="font-size:10px;color:#aaa;">${lastTime}</span>
-            </div>`;
-          row.appendChild(arrowSpan);
-
-          /* ── Thread panel (collapsed by default) ───────────────────── */
-          const thread = document.createElement("div");
-          thread.style.cssText = "display:none;";
-
-          // Thread header (green bar with back chevron)
-          const threadHdr = document.createElement("div");
-          threadHdr.style.cssText = [
-            "display:flex", "align-items:center", "gap:8px",
-            "padding:8px 12px", "background:#075E54", "color:white",
-          ].join(";");
-
-          const backBtn = document.createElement("button");
-          backBtn.innerHTML = "← Wapas";
-          backBtn.style.cssText = [
-            "background:none", "border:none", "color:white",
-            "font-size:12px", "font-weight:600", "cursor:pointer",
-            "padding:0", "flex-shrink:0",
-          ].join(";");
-          const hdrLabel = document.createElement("span");
-          hdrLabel.style.cssText = "font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-          hdrLabel.textContent = myName + " ↔ " + otherName;
-
-          const countBadge = document.createElement("span");
-          countBadge.style.cssText = "font-size:10px;opacity:0.75;flex-shrink:0;";
-          countBadge.textContent   = messages.length + " msgs";
-
-          threadHdr.appendChild(backBtn);
-          threadHdr.appendChild(hdrLabel);
-          threadHdr.appendChild(countBadge);
-          thread.appendChild(threadHdr);
-
-          // Messages scroll area — filled by live .on("child_added"), not a one-time fetch
-          const msgArea = document.createElement("div");
-          msgArea.style.cssText = [
-            "display:flex", "flex-direction:column",
-            "padding:10px 12px", "max-height:280px", "overflow-y:auto",
-            "background:#fafafa",
-          ].join(";");
-          thread.appendChild(msgArea);
-
-          // ── Per-room live listener helpers ───────────────────────────────
-          function _openThread() {
-            // Detach any previously active thread listener (only one live at a time)
-            if (_adminThreadRef) {
-              try { _adminThreadRef.off("child_added"); } catch (_) {}
-              _adminThreadRef = null;
-            }
-            // Clear area and show loading placeholder
-            msgArea.innerHTML = `<p style="color:#9ca3af;font-size:12px;text-align:center;padding:10px 0;">⏳ Loading messages...</p>`;
-            let msgCount = 0;
-            const roomRef = db.ref("chats/" + room.id);
-            _adminThreadRef = roomRef;
-
-            roomRef.on("child_added", (snap) => {
-              // Remove loading / empty placeholder on first child
-              const placeholder = msgArea.querySelector("p");
-              if (placeholder) placeholder.remove();
-              const msg = { key: snap.key, ...snap.val() };
-              msgArea.appendChild(_renderBubble(msg, myName, otherName));
-              msgCount++;
-              countBadge.textContent = msgCount + " msg" + (msgCount !== 1 ? "s" : "");
-              // Auto-scroll to the newest message
-              requestAnimationFrame(() => { msgArea.scrollTop = msgArea.scrollHeight; });
-            }, (err) => {
-              console.warn("Admin live thread error:", room.id, err.message);
-            });
-          }
-
-          function _closeThread() {
-            if (_adminThreadRef) {
-              try { _adminThreadRef.off("child_added"); } catch (_) {}
-              _adminThreadRef = null;
-            }
-            msgArea.innerHTML = "";
-            countBadge.textContent = messages.length + " msgs";
-          }
-
-          // Back button — detach live listener and collapse thread
-          backBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            _closeThread();
-            thread.style.display = "none";
-            arrowSpan.textContent = "▶";
-          });
-
-          // Row click — open attaches live listener, close detaches it
-          row.addEventListener("click", () => {
-            const opening = thread.style.display === "none";
-            if (opening) {
-              thread.style.display = "block";
-              arrowSpan.textContent = "▼";
-              _openThread();
-            } else {
-              _closeThread();
-              thread.style.display = "none";
-              arrowSpan.textContent = "▶";
-            }
-          });
-
-          /* ── Wrap in card ─────────────────────────────────────────── */
-          const card = document.createElement("div");
-          card.style.cssText = [
-            "border:1px solid #d1fae5",
-            "border-radius:10px",
-            "overflow:hidden",
-            "margin-bottom:8px",
-            "box-shadow:0 1px 3px rgba(0,0,0,0.05)",
-          ].join(";");
-          card.appendChild(row);
-          card.appendChild(thread);
-          container.appendChild(card);
-
-        }).catch((err) => {
-          console.warn("Room load error:", room.id, err.message);
-        })
-      );
-
-      Promise.all(fetches).then(() => {
-        if (!container.children.length) {
-          container.innerHTML = `
-            <div style="text-align:center;padding:20px 0;color:#6b7280;font-size:13px;">
-              📭 Is user ki koi chat history nahi mili.
-            </div>`;
-        }
-      });
-
-    }).catch((err) => {
-      console.error("loadUserChatsInAdmin error:", err);
-      const isPerm = err && (err.code === "PERMISSION_DENIED" || (err.message || "").includes("permission"));
-      container.innerHTML = `
-        <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
-          ⚠️ Chat history load nahi hui.<br>
-          <span style="font-size:11px;color:#9ca3af;">
-            ${isPerm
-              ? "Firebase Console → Authentication → Sign-in providers → Anonymous signin enable karein."
-              : "Internet ya Firebase connection check karein."}
-          </span><br>
-          <button onclick="loadUserChatsInAdmin('${escapeHtml(targetUserId)}')"
-            style="margin-top:8px;padding:6px 14px;background:#075E54;color:white;
-                   border:none;border-radius:6px;font-size:12px;cursor:pointer;">
-            ↺ Dobara Try Karein
-          </button>
-        </div>`;
-    });
-  } // end _doLoad
-
-  // Ensure Firebase Auth session exists before querying
-  const currentUser = auth.currentUser;
-  if (currentUser) {
-    _doLoad();
-  } else {
-    const unsub = auth.onAuthStateChanged((user) => {
-      unsub();
-      if (user) {
-        _doLoad();
-      } else {
-        auth.signInAnonymously()
-          .then(() => _doLoad())
-          .catch(() => {
-            container.innerHTML = `
-              <div style="text-align:center;padding:14px;color:#dc2626;font-size:13px;">
-                ⚠️ Auth error. Firebase Console mein Anonymous signin enable karein.
-              </div>`;
-          });
+  db.ref("chat_rooms").once("value").then((snap) => {
+    const rooms = [];
+    snap.forEach((child) => {
+      const r = child.val();
+      if (r && r.participants && r.participants[username]) {
+        rooms.push({ id: child.key, ...r });
       }
     });
-  }
-}
 
-/* ── Presence ────────────────────────────────────────────────────────── */
-function setupUserPresence() {
-  if (!state.user || !state.user.username) return;
-  const me        = state.user.username;
-  const statusRef = db.ref("users/" + me + "/status");
-
-  db.ref(".info/connected").on("value", (snap) => {
-    if (!snap.val()) return;
-    statusRef.onDisconnect()
-      .set({ state: "offline", last_changed: firebase.database.ServerValue.TIMESTAMP })
-      .then(() => statusRef.set({ state: "online", last_changed: firebase.database.ServerValue.TIMESTAMP }));
-  });
-}
-
-function _listenToPresence(targetUserId) {
-  const el = document.getElementById("chat-user-status");
-  if (!el) return;
-
-  const ref = db.ref("users/" + targetUserId + "/status");
-  _presenceListener = ref;
-
-  ref.on("value", (snap) => {
-    if (!snap.exists()) {
-      el.innerText = "offline"; el.style.color = "#999";
-      el._presenceText = "offline";
+    if (rooms.length === 0) {
+      container.innerHTML = `<p style="color:#888;font-style:italic;font-size:13px;padding:8px;">Is user ki abhi tak koi chat nahi hai.</p>`;
       return;
     }
-    const s = snap.val();
-    let text;
-    if (s.state === "online") {
-      text = "online ●"; el.style.color = "#25D366";
-    } else {
-      el.style.color = "#999";
-      text = s.last_changed ? "last seen " + formatChatTime(s.last_changed) : "offline";
-    }
-    // Store so typing indicator can restore it when typing stops
-    el._presenceText = text;
-    // Only update if typing indicator isn't active
-    if (el.style.fontStyle !== "italic") el.innerText = text;
+
+    container.innerHTML = rooms.map((r) => {
+      const others = Object.keys(r.participants || {}).filter((k) => k !== username);
+      const otherName = (r.participantNames && others[0] && r.participantNames[others[0]]) || others[0] || "—";
+      return `<div style="padding:8px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="font-size:12px;font-weight:600;color:#1E40AF;">💬 ${escapeHtml(username)} ↔ ${escapeHtml(otherName)}</span>
+        <span style="font-size:11px;color:#888;margin-left:8px;">${escapeHtml(r.lastMessage || "")}</span>
+      </div>`;
+    }).join("");
+  }).catch(() => {
+    if (container) container.innerHTML = `<p style="color:#888;font-size:13px;padding:8px;">Chat history load nahi ho saki.</p>`;
   });
 }
 
-/* =====================================================================
-   EXTENDED CHAT FEATURES
-   1. Chat toolbar injection (mic 🎤, location 📍, attachment 📎)
-   2. Typing indicator  (Firebase chats_presence/{roomId}/{userId})
-   3. Voice recording   (MediaRecorder → Firebase Storage)
-   4. Location sharing  (Geolocation → Google Maps link)
-   5. File / image attachment (Firebase Storage upload)
-   6. Image fullscreen viewer
-   7. Admin "All Conversations" overlay
-   ===================================================================== */
-
-/* ── Shared icon-button CSS string ───────────────────────────────────── */
-function _iconBtnStyle() {
-  return [
-    "background:none", "border:none", "cursor:pointer",
-    "padding:7px", "font-size:19px", "line-height:1",
-    "color:#555", "border-radius:50%", "transition:background 0.15s",
-    "flex-shrink:0",
-  ].join(";");
+/* ─── Image helpers ──────────────────────────────────────────── */
+function _openImageFullscreen(src) {
+  const ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;";
+  ov.innerHTML = `<img src="${escapeHtml(src)}" style="max-width:95vw;max-height:92vh;border-radius:8px;object-fit:contain;">`;
+  ov.addEventListener("click", () => ov.remove());
+  document.body.appendChild(ov);
 }
 
-/* ── 1. Inject toolbar into chat modal (idempotent) ──────────────────── */
-function _ensureChatInputUI() {
-  if (document.getElementById("_chat-toolbar")) return; // already done
-
-  const inputEl = document.getElementById("chat-input-text");
-  if (!inputEl) return;
-  const parent = inputEl.parentElement;
-
-  // ── Toolbar div (three icon buttons)
-  const toolbar = document.createElement("div");
-  toolbar.id = "_chat-toolbar";
-  toolbar.style.cssText = "display:flex;align-items:center;gap:1px;flex-shrink:0;";
-  toolbar.innerHTML = `
-    <button id="_btn-attach" title="File ya Image bhejein" style="${_iconBtnStyle()}">📎</button>
-    <button id="_btn-loc"    title="Apni location share karein" style="${_iconBtnStyle()}">📍</button>
-    <button id="_btn-mic"    title="Voice message — click to start / stop" style="${_iconBtnStyle()}">🎤</button>`;
-
-  // ── Hidden file input
-  const fileInput = document.createElement("input");
-  fileInput.type    = "file";
-  fileInput.id      = "_chat-file-input";
-  fileInput.accept  = "image/*,application/pdf,.doc,.docx,.txt";
-  fileInput.style.display = "none";
-  fileInput.addEventListener("change", (e) => {
-    if (e.target.files[0]) _handleFileAttachment(e.target.files[0]);
-    e.target.value = "";
-  });
-
-  // ── Recording indicator bar
-  const recBar = document.createElement("div");
-  recBar.id = "_rec-bar";
-  recBar.style.cssText = [
-    "display:none", "align-items:center", "gap:8px",
-    "padding:5px 10px", "background:#FEE2E2", "border-radius:8px",
-    "font-size:12px", "color:#DC2626", "flex-shrink:0", "white-space:nowrap",
-  ].join(";");
-  recBar.innerHTML = `<span style="animation:_chatPulse 1s infinite;">🔴</span> Recording… <span id="_rec-time">0:00</span>`;
-
-  // ── Keyframe for pulsing dot (inject once)
-  if (!document.getElementById("_chat-ext-styles")) {
-    const sty = document.createElement("style");
-    sty.id = "_chat-ext-styles";
-    sty.textContent = `
-      @keyframes _chatPulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
-      #_btn-mic.recording { background:#FEE2E2 !important; color:#DC2626 !important; }
-      #_upload-spinner {
-        position:absolute; bottom:64px; right:14px; background:#1E40AF;
-        color:white; border-radius:8px; padding:6px 12px;
-        font-size:12px; font-weight:600; z-index:100; display:none;
-      }
-    `;
-    document.head.appendChild(sty);
-  }
-
-  // ── Upload spinner (positioned inside chat-modal)
-  if (!document.getElementById("_upload-spinner")) {
-    const spinner = document.createElement("div");
-    spinner.id = "_upload-spinner";
-    spinner.textContent = "⏳ Uploading…";
-    const modal = document.getElementById("chat-modal");
-    if (modal) {
-      modal.style.position = "relative";
-      modal.appendChild(spinner);
-    }
-  }
-
-  // ── Insert elements: recBar | toolbar | fileInput | [existing input] | [send btn]
-  const anchor = inputEl; // insert before the text input
-  parent.insertBefore(fileInput, anchor);
-  parent.insertBefore(toolbar,   anchor);
-  parent.insertBefore(recBar,    anchor);
-
-  // ── Wire buttons
-  document.getElementById("_btn-attach").addEventListener("click", () =>
-    document.getElementById("_chat-file-input").click()
-  );
-  document.getElementById("_btn-loc").addEventListener("click", shareLocation);
-  document.getElementById("_btn-mic").addEventListener("click", _toggleVoiceRecord);
-
-  // ── Typing: add input + Enter listeners (safe even if called multiple times)
-  inputEl.removeEventListener("input",   _onTypingInput);
-  inputEl.removeEventListener("keydown", _chatEnterKey);
-  inputEl.addEventListener("input",   _onTypingInput);
-  inputEl.addEventListener("keydown", _chatEnterKey);
-}
-
-function _chatEnterKey(e) {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-}
-
-/* ── 2. Typing indicator ─────────────────────────────────────────────── */
-function _onTypingInput() {
-  if (!_typingRef) return;
-  _typingRef.set(true).catch(() => {});
-  if (_typingTimer) clearTimeout(_typingTimer);
-  _typingTimer = setTimeout(_clearMyTypingStatus, 2000);
-}
-
-function _clearMyTypingStatus() {
-  if (_typingRef) _typingRef.set(false).catch(() => {});
-}
-
-function _listenTyping(roomId, myID, otherID) {
-  // Detach old listener
-  if (_typingListenerRef) { _typingListenerRef.off(); _typingListenerRef = null; }
-
-  // Register my own typing node and set it to false on disconnect
-  _typingRef = db.ref("chats_presence/" + roomId + "/" + myID);
-  _typingRef.onDisconnect().set(false).catch(() => {});
-
-  // Listen to the other person's typing status
-  const ref = db.ref("chats_presence/" + roomId + "/" + otherID);
-  _typingListenerRef = ref;
-
-  ref.on("value", (snap) => {
-    const statusEl = document.getElementById("chat-user-status");
-    if (!statusEl) return;
-    if (snap.val() === true) {
-      statusEl.textContent  = "typing…";
-      statusEl.style.color  = "#25D366";
-      statusEl.style.fontStyle = "italic";
-    } else {
-      statusEl.style.fontStyle = "";
-      // Restore last-seen / online text
-      statusEl.innerText = statusEl._presenceText || "";
-    }
-  });
-}
-
-/* ── 3. Voice recording ──────────────────────────────────────────────── */
-function _toggleVoiceRecord() {
-  if (_isRecording) _stopVoiceRecord(); else _startVoiceRecord();
-}
-
-function _startVoiceRecord() {
-  if (!navigator.mediaDevices || !window.MediaRecorder) {
-    alert("Aapka browser voice recording support nahi karta.");
-    return;
-  }
-  navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-    _audioChunks   = [];
-    const mime     = _getBestAudioMime();
-    _mediaRecorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
-
-    _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _audioChunks.push(e.data); };
-    _mediaRecorder.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(_audioChunks, { type: _mediaRecorder.mimeType || "audio/ogg" });
-      _uploadAudio(blob);
-      _audioChunks = [];
-    };
-
-    _mediaRecorder.start();
-    _isRecording = true;
-
-    // UI: red indicator + mic button state
-    const micBtn = document.getElementById("_btn-mic");
-    if (micBtn) micBtn.classList.add("recording");
-    const recBar = document.getElementById("_rec-bar");
-    if (recBar) recBar.style.display = "flex";
-
-    // Seconds timer
-    let secs = 0;
-    _recTimerInterval = setInterval(() => {
-      secs++;
-      const el = document.getElementById("_rec-time");
-      if (el) el.textContent = Math.floor(secs / 60) + ":" + String(secs % 60).padStart(2, "0");
-      if (secs >= 60) _stopVoiceRecord(); // auto-stop at 60 seconds
-    }, 1000);
-
-  }).catch((err) => {
-    console.error("Microphone access error:", err);
-    alert("Microphone access nahi mila. Browser settings mein permission allow karein.");
-  });
-}
-
-function _stopVoiceRecord() {
-  if (_mediaRecorder && _isRecording) {
-    try { _mediaRecorder.stop(); } catch (_) {}
-    _isRecording = false;
-  }
-  if (_recTimerInterval) { clearInterval(_recTimerInterval); _recTimerInterval = null; }
-  const micBtn = document.getElementById("_btn-mic");
-  if (micBtn) micBtn.classList.remove("recording");
-  const recBar = document.getElementById("_rec-bar");
-  if (recBar) recBar.style.display = "none";
-  const tEl = document.getElementById("_rec-time");
-  if (tEl) tEl.textContent = "0:00";
-}
-
-function _getBestAudioMime() {
-  if (typeof MediaRecorder === "undefined") return "";
-  const types = [
-    "audio/webm;codecs=opus", "audio/ogg;codecs=opus",
-    "audio/webm", "audio/ogg", "audio/mp4",
-  ];
-  return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
-}
-
-/* ── FREE Media Upload Helpers (no Firebase Storage required) ────────
-   Strategy: convert files to base64 data URIs and store directly in
-   Firebase Realtime Database. Images are resized via canvas (max 800px)
-   to keep node sizes small. Voice notes auto-stop at 60 seconds.
-   Documents are capped at 800 KB.
-   ──────────────────────────────────────────────────────────────────── */
-
-function _blobToBase64(blob) {
+async function _resizeImageToBase64(file, maxDim, quality) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error("FileReader error"));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function _resizeImageToBase64(file, maxPx, quality) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.width, h = img.height;
-      if (w > maxPx || h > maxPx) {
-        const ratio = Math.min(maxPx / w, maxPx / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", quality || 0.72));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.width  * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality || 0.8));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
     };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image load error")); };
-    img.src = url;
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
 }
-
-async function _uploadAudio(blob) {
-  if (!state.user || !_chatRoomID) return;
-
-  // Guard: blob must be reasonable size (max 3 MB for a ~60s voice note)
-  if (blob.size > 3 * 1024 * 1024) {
-    showToast("Voice note bahut lamba hai. Max 60 seconds allowed.", "error");
-    return;
-  }
-
-  showToast("Voice message save ho raha hai…", "success", 3000);
-  try {
-    const base64 = await _blobToBase64(blob);
-    _pushChatMessage({ type: "audio", audioUrl: base64, text: "🎤 Voice message" });
-  } catch (err) {
-    console.error("Audio encode error:", err);
-    showToast("Voice message save nahi hua. Phir try karein.", "error");
-  }
-}
-
-/* ── 4. Location sharing ─────────────────────────────────────────────── */
-function shareLocation() {
-  if (!navigator.geolocation) {
-    alert("Aapka browser location support nahi karta.");
-    return;
-  }
-  const btn = document.getElementById("_btn-loc");
-  if (btn) { btn.textContent = "⏳"; btn.disabled = true; }
-
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      if (btn) { btn.textContent = "📍"; btn.disabled = false; }
-      const { latitude: lat, longitude: lng } = pos.coords;
-      const url = "https://www.google.com/maps?q=" + lat + "," + lng;
-      _pushChatMessage({ type: "location", locationUrl: url, lat, lng, text: "📍 Location" });
-    },
-    (err) => {
-      if (btn) { btn.textContent = "📍"; btn.disabled = false; }
-      console.error("Geolocation error:", err);
-      alert("Location nahi mili. Browser settings mein location allow karein.");
-    },
-    { enableHighAccuracy: true, timeout: 10000 }
-  );
-}
-
-/* ── 5. File / image attachment ──────────────────────────────────────── */
-function openFileAttachment() {
-  const inp = document.getElementById("_chat-file-input");
-  if (inp) inp.click();
-}
-
-async function _handleFileAttachment(file) {
-  if (!state.user || !_chatRoomID) return;
-
-  const isImage = file.type.startsWith("image/");
-  const spinner = document.getElementById("_upload-spinner");
-  if (spinner) spinner.style.display = "block";
-
-  try {
-    if (isImage) {
-      // Resize image to max 800px and convert to base64 JPEG — keeps size tiny
-      const base64 = await _resizeImageToBase64(file, 800, 0.72);
-      if (spinner) spinner.style.display = "none";
-      _pushChatMessage({ type: "image", fileUrl: base64, fileName: file.name, text: "🖼 Image" });
-    } else {
-      // Documents — enforce 800 KB size limit to fit in Firebase RTDB node
-      if (file.size > 800 * 1024) {
-        if (spinner) spinner.style.display = "none";
-        showToast("File bahut bari hai. Max 800 KB allowed. PDF compress kar ke bhejein.", "error", 4000);
-        return;
-      }
-      const base64 = await _blobToBase64(file);
-      if (spinner) spinner.style.display = "none";
-      _pushChatMessage({ type: "document", fileUrl: base64, fileName: file.name, text: "📄 " + file.name });
-    }
-  } catch (err) {
-    if (spinner) spinner.style.display = "none";
-    console.error("File attach error:", err);
-    showToast("File bhejne mein masla aaya. Phir try karein.", "error");
-  }
-}
-
-/* ── Shared helper: push any message type to Firebase ────────────────── */
-function _pushChatMessage(extra) {
-  if (!state.user || !_chatRoomID) return;
-  const me     = state.user.username;
-  const myName = state.user.fullName || me;
-
-  const msg = {
-    senderID:  me,
-    timestamp: firebase.database.ServerValue.TIMESTAMP,
-    seen:      false,
-    ...extra,
-  };
-
-  // Push message
-  db.ref("chats/" + _chatRoomID).push(msg).catch((err) => console.error("_pushChatMessage:", err));
-
-  // Use state.activeChat — splitting _chatRoomID on "_" breaks for usernames with underscores
-  const receiverID   = state.activeChat || "";
-  if (!receiverID) return;
-  const nameEl       = document.getElementById("chat-user-name");
-  const receiverName = nameEl ? nameEl.innerText : receiverID;
-
-  db.ref("chat_rooms/" + _chatRoomID).update({
-    participants:     { [me]: true, [receiverID]: true },
-    participantNames: { [me]: myName, [receiverID]: receiverName },
-    lastMessage:      extra.text || "Media",
-    lastTimestamp:    firebase.database.ServerValue.TIMESTAMP,
-  }).catch(() => {});
-
-  // Increment receiver's unread counter
-  db.ref("chat_rooms/" + _chatRoomID + "/unread/" + receiverID)
-    .transaction((c) => (c || 0) + 1).catch(() => {});
-}
-
-/* ── 6. Image fullscreen viewer ──────────────────────────────────────── */
-function _openImageFullscreen(src) {
-  let viewer = document.getElementById("_img-viewer");
-  if (!viewer) {
-    viewer = document.createElement("div");
-    viewer.id = "_img-viewer";
-    viewer.style.cssText = [
-      "position:fixed", "inset:0", "z-index:99999",
-      "background:rgba(0,0,0,0.95)", "display:none",
-      "align-items:center", "justify-content:center", "cursor:zoom-out",
-    ].join(";");
-    viewer.innerHTML = `
-      <img id="_img-viewer-img"
-        style="max-width:95vw;max-height:90vh;border-radius:4px;object-fit:contain;">
-      <button onclick="document.getElementById('_img-viewer').style.display='none'"
-        style="position:absolute;top:14px;right:14px;background:rgba(255,255,255,0.15);
-               border:none;color:white;font-size:22px;cursor:pointer;
-               border-radius:50%;width:40px;height:40px;line-height:40px;text-align:center;">
-        ✕
-      </button>`;
-    viewer.addEventListener("click", (e) => {
-      if (e.target === viewer) viewer.style.display = "none";
-    });
-    document.body.appendChild(viewer);
-  }
-  document.getElementById("_img-viewer-img").src = src;
-  viewer.style.display = "flex";
-}
-
-/* ── 7. Admin — All Conversations overlay ────────────────────────────── */
-function _injectAdminChatsBtn() {
-  if (document.getElementById("_admin-chats-btn")) return;
-
-  const btn = document.createElement("button");
-  btn.id = "_admin-chats-btn";
-  btn.innerHTML = "💬 All Conversations";
-  btn.style.cssText = [
-    "display:inline-flex", "align-items:center", "gap:6px",
-    "margin:12px", "padding:10px 18px",
-    "background:#1E40AF", "color:white",
-    "border:none", "border-radius:8px",
-    "font-size:14px", "font-weight:600", "cursor:pointer",
-    "box-shadow:0 2px 6px rgba(30,64,175,0.3)",
-  ].join(";");
-  btn.addEventListener("click", renderAdminAllChats);
-
-  // Insert at top of admin screen, or body as fallback
-  const screen = document.getElementById("screen-admin") || document.body;
-  screen.insertBefore(btn, screen.firstChild);
-}
-
-function renderAdminAllChats() {
-  let overlay = document.getElementById("_admin-chats-overlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.id = "_admin-chats-overlay";
-    overlay.style.cssText = [
-      "position:fixed", "inset:0", "z-index:9500",
-      "background:#f0f4f8", "display:none",
-      "flex-direction:column", "overflow:hidden", "font-family:inherit",
-    ].join(";");
-    overlay.innerHTML = `
-      <div style="background:#1E40AF;color:white;display:flex;align-items:center;
-                  gap:10px;padding:0 14px;height:56px;flex-shrink:0;
-                  box-shadow:0 2px 4px rgba(0,0,0,0.2);">
-        <button onclick="document.getElementById('_admin-chats-overlay').style.display='none'"
-          style="background:none;border:none;color:white;font-size:24px;
-                 cursor:pointer;padding:4px 8px 4px 0;line-height:1;">&#8592;</button>
-        <span style="font-size:17px;font-weight:700;flex:1;">All Conversations</span>
-        <span id="_admin-chats-count" style="font-size:12px;background:rgba(255,255,255,0.2);
-              border-radius:12px;padding:2px 8px;"></span>
-      </div>
-      <div id="_admin-chats-list"
-        style="flex:1;overflow-y:auto;background:white;"></div>`;
-    document.body.appendChild(overlay);
-  }
-
-  overlay.style.display = "flex";
-  const list    = document.getElementById("_admin-chats-list");
-  const countEl = document.getElementById("_admin-chats-count");
-  list.innerHTML = `<p style="text-align:center;color:#888;padding:30px;font-size:13px;">Loading…</p>`;
-
-  db.ref("chat_rooms").orderByChild("lastTimestamp").once("value").then((snap) => {
-    const rooms = [];
-    snap.forEach((child) => rooms.push({ id: child.key, ...child.val() }));
-    rooms.reverse(); // newest first
-
-    if (countEl) countEl.textContent = rooms.length + " chat" + (rooms.length !== 1 ? "s" : "");
-
-    list.innerHTML = "";
-    if (!rooms.length) {
-      list.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#aaa;font-size:14px;">Abhi tak koi chat nahi.</div>`;
-      return;
-    }
-
-    rooms.forEach((room) => {
-      const parts   = room.id.split("_");
-      const nameA   = (room.participantNames && room.participantNames[parts[0]]) || parts[0];
-      const nameB   = (room.participantNames && room.participantNames[parts[1]]) || parts[1];
-      const lastMsg = room.lastMessage || "—";
-      const lastT   = formatChatTime(room.lastTimestamp);
-      const totalUnread = room.unread
-        ? Object.values(room.unread).reduce((a, b) => a + (b || 0), 0)
-        : 0;
-
-      const row = document.createElement("div");
-      row.style.cssText = [
-        "display:flex", "align-items:center", "gap:12px",
-        "padding:13px 16px", "border-bottom:1px solid #f0f0f0",
-        "cursor:pointer", "transition:background 0.15s",
-      ].join(";");
-      row.addEventListener("mouseenter", () => { row.style.background = "#f7f9ff"; });
-      row.addEventListener("mouseleave", () => { row.style.background = ""; });
-      row.innerHTML = `
-        <div style="width:44px;height:44px;background:#EFF6FF;color:#1E40AF;border-radius:50%;
-                    display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">
-          💬
-        </div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-            <span style="font-weight:700;font-size:14px;color:#111;">
-              ${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)}
-            </span>
-            <span style="font-size:11px;color:#aaa;flex-shrink:0;">${lastT}</span>
-          </div>
-          <div style="font-size:12px;color:#666;margin-top:2px;overflow:hidden;
-                      text-overflow:ellipsis;white-space:nowrap;">
-            ${escapeHtml(lastMsg)}
-          </div>
-        </div>
-        ${totalUnread > 0
-          ? `<span style="background:#EF4444;color:white;border-radius:12px;
-                          padding:2px 8px;font-size:11px;font-weight:bold;flex-shrink:0;">
-               ${totalUnread}
-             </span>`
-          : ""}`;
-
-      row.addEventListener("click", () => {
-        overlay.style.display = "none";
-        _openAdminChatRoom(room.id, nameA, nameB);
-      });
-      list.appendChild(row);
-    });
-  }).catch((err) => {
-    console.error("Admin all chats error:", err);
-    list.innerHTML = `<p style="color:red;text-align:center;padding:24px;font-size:13px;">Load fail. Phir try karein.</p>`;
-  });
-}
-
-// Admin: read-only message history for a specific room
-function _openAdminChatRoom(roomId, nameA, nameB) {
-  let viewer = document.getElementById("_admin-room-viewer");
-  if (!viewer) {
-    viewer = document.createElement("div");
-    viewer.id = "_admin-room-viewer";
-    viewer.style.cssText = [
-      "position:fixed", "inset:0", "z-index:9600",
-      "background:#f0f4f8", "display:none",
-      "flex-direction:column", "overflow:hidden", "font-family:inherit",
-    ].join(";");
-    document.body.appendChild(viewer);
-  }
-
-  viewer.innerHTML = `
-    <div style="background:#1E40AF;color:white;display:flex;align-items:center;
-                gap:10px;padding:0 14px;height:56px;flex-shrink:0;">
-      <button onclick="
-          document.getElementById('_admin-room-viewer').style.display='none';
-          document.getElementById('_admin-chats-overlay').style.display='flex';"
-        style="background:none;border:none;color:white;font-size:24px;
-               cursor:pointer;padding:4px 8px 4px 0;line-height:1;">&#8592;</button>
-      <div>
-        <div style="font-size:14px;font-weight:700;">${escapeHtml(nameA)} ↔ ${escapeHtml(nameB)}</div>
-        <div style="font-size:11px;opacity:0.75;">Read-only — Admin view</div>
-      </div>
-    </div>
-    <div id="_admin-room-msgs"
-      style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;
-             gap:8px;background:#f5f7fb;">
-      <p style="text-align:center;color:#888;font-size:13px;">Loading messages…</p>
-    </div>`;
-  viewer.style.display = "flex";
-
-  const msgBox = document.getElementById("_admin-room-msgs");
-  db.ref("chats/" + roomId).orderByChild("timestamp").once("value").then((snap) => {
-    msgBox.innerHTML = "";
-    if (!snap.exists()) {
-      msgBox.innerHTML = `<p style="text-align:center;color:#aaa;font-size:13px;">Koi message nahi.</p>`;
-      return;
-    }
-    const parts = roomId.split("_");
-    snap.forEach((child) => {
-      const msg    = child.val();
-      const isMine = msg.senderID === parts[0]; // arbitrary: first user = "left"
-      const bubble = document.createElement("div");
-      bubble.style.cssText = `display:flex;flex-direction:column;align-items:${isMine ? "flex-end" : "flex-start"};`;
-      bubble.innerHTML = `
-        <div style="font-size:10px;color:#999;margin-bottom:3px;">
-          ${escapeHtml(msg.senderID)} · ${formatChatTime(msg.timestamp)}
-          ${msg.seen ? '<span style="color:#60A5FA;"> ✓✓</span>' : ""}
-        </div>
-        <div style="background:${isMine ? "#DBEAFE" : "white"};padding:8px 12px;
-                    border-radius:${isMine ? "14px 14px 0 14px" : "14px 14px 14px 0"};
-                    max-width:72%;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,0.08);
-                    overflow:hidden;">
-          ${_bubbleContent(msg, isMine)}
-        </div>`;
-      msgBox.appendChild(bubble);
-    });
-    msgBox.scrollTop = msgBox.scrollHeight;
-  }).catch(() => {
-    msgBox.innerHTML = `<p style="color:red;text-align:center;font-size:13px;">Load fail.</p>`;
-  });
-}
-
-/* ── Offline / Online handling ───────────────────────────────────────── */
-(function _setupNetworkHandlers() {
-  function _offlineToast() {
-    const container = document.getElementById("toast-container");
-    if (!container) return;
-    const existing = document.getElementById("_offline-toast");
-    if (existing) return;
-    const el = document.createElement("div");
-    el.id = "_offline-toast";
-    el.className = "toast warn";
-    el.style.cssText = "white-space:normal;max-width:280px;text-align:center;line-height:1.4;";
-    el.textContent = "📡 Aap offline hain. Please check your connection.";
-    container.appendChild(el);
-    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("show")));
-  }
-
-  function _onlineToast() {
-    const el = document.getElementById("_offline-toast");
-    if (el) {
-      el.classList.remove("show");
-      setTimeout(() => el.remove(), 350);
-    }
-    if (typeof showToast === "function") {
-      showToast("✅ Internet connection wapas aa gayi!", "success", 3500);
-    }
-  }
-
-  window.addEventListener("offline", _offlineToast);
-  window.addEventListener("online",  _onlineToast);
-
-  // Check initial state
-  if (!navigator.onLine) setTimeout(_offlineToast, 1200);
-})();

@@ -2420,3 +2420,47 @@ async function _resizeImageToBase64(file, maxDim, quality) {
     reader.readAsDataURL(file);
   });
 }
+// --- Attachment Handlers ---
+
+function attachFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Yahan file upload logic aayega, abhi hum sirf message type send kar rahe hain
+        // Aap yahan apna purana upload logic laga sakte hain
+        sendAttachmentMessage("file", "Sent a file"); 
+    };
+    input.click();
+}
+
+function sendLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            const mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
+            sendAttachmentMessage("location", mapUrl);
+        });
+    }
+}
+
+function startVoiceRecord() {
+    // Yahan recording logic start karein, recording khatam hone par niche wala function call karein
+    sendAttachmentMessage("voice", "Voice note");
+}
+
+// Ye helper function hai jo aapke sendMessage jaisa hi kaam karega
+function sendAttachmentMessage(type, content) {
+    const chatRoomID = state.activeChat; // Ye aapke sendMessage function se liya gaya hai
+    if (!chatRoomID) return;
+
+    db.ref("chats/" + chatRoomID).push({
+        senderID: state.user.username,
+        type: type,
+        text: content,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        seen: false
+    });
+}
+

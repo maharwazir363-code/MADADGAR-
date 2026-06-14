@@ -2270,6 +2270,8 @@ function loadUserChatsInAdmin(username) {
 
   if (_adminThreadRef) { _adminThreadRef.off(); _adminThreadRef = null; }
 
+  container.innerHTML = `<p style="color:#888;font-style:italic;font-size:13px;padding:8px;text-align:center;">⏳ Chats load ho rahi hain...</p>`;
+
   db.ref("chat_rooms").once("value").then((snap) => {
     const rooms = [];
     snap.forEach((child) => {
@@ -2280,21 +2282,183 @@ function loadUserChatsInAdmin(username) {
     });
 
     if (rooms.length === 0) {
-      container.innerHTML = `<p style="color:#888;font-style:italic;font-size:13px;padding:8px;">Is user ki abhi tak koi chat nahi hai.</p>`;
+      container.innerHTML = `
+        <div style="text-align:center;padding:20px 12px;">
+          <div style="font-size:32px;margin-bottom:8px;">💬</div>
+          <p style="color:#888;font-style:italic;font-size:13px;margin:0;">Is user ki abhi tak koi chat nahi hai.</p>
+        </div>`;
       return;
     }
 
+    /* Sort by lastTimestamp descending */
+    rooms.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
+
     container.innerHTML = rooms.map((r) => {
       const others = Object.keys(r.participants || {}).filter((k) => k !== username);
-      const otherName = (r.participantNames && others[0] && r.participantNames[others[0]]) || others[0] || "—";
-      return `<div style="padding:8px 0;border-bottom:1px solid #f0f0f0;">
-        <span style="font-size:12px;font-weight:600;color:#1E40AF;">💬 ${escapeHtml(username)} ↔ ${escapeHtml(otherName)}</span>
-        <span style="font-size:11px;color:#888;margin-left:8px;">${escapeHtml(r.lastMessage || "")}</span>
-      </div>`;
+      const otherID   = others[0] || "";
+      const otherName = (r.participantNames && otherID && r.participantNames[otherID]) || otherID || "—";
+      const lastMsg   = escapeHtml(r.lastMessage || "Koi message nahi");
+      const timeStr   = formatChatTime(r.lastTimestamp);
+      const initial   = (otherName || "?").charAt(0).toUpperCase();
+
+      return `
+        <div
+          class="admin-chat-item"
+          data-chatid="${escapeHtml(r.id)}"
+          data-othername="${escapeHtml(otherName)}"
+          data-adminuser="${escapeHtml(username)}"
+          onclick="openAdminChatDetail('${escapeHtml(r.id)}','${escapeHtml(otherName)}','${escapeHtml(username)}')"
+          title="Chat kholuun — ${escapeHtml(username)} ↔ ${escapeHtml(otherName)}"
+        >
+          <div class="admin-chat-item__avatar">${escapeHtml(initial)}</div>
+          <div class="admin-chat-item__body">
+            <div class="admin-chat-item__header">
+              <span class="admin-chat-item__names">
+                <strong>${escapeHtml(username)}</strong>
+                <span style="color:#94a3b8;font-weight:400;margin:0 4px;">↔</span>
+                <strong>${escapeHtml(otherName)}</strong>
+              </span>
+              <span class="admin-chat-item__time">${escapeHtml(timeStr)}</span>
+            </div>
+            <div class="admin-chat-item__preview">${lastMsg}</div>
+          </div>
+          <div class="admin-chat-item__arrow">›</div>
+        </div>`;
     }).join("");
   }).catch(() => {
-    if (container) container.innerHTML = `<p style="color:#888;font-size:13px;padding:8px;">Chat history load nahi ho saki.</p>`;
+    if (container) container.innerHTML = `<p style="color:#888;font-size:13px;padding:8px;">Chat history load nahi ho saki. Internet check karein.</p>`;
   });
+}
+
+/* ─── Admin: Open Chat Detail ────────────────────────────────── */
+function openAdminChatDetail(chatId, otherName, adminViewUsername) {
+  if (!chatId) return;
+
+  /* Build / show overlay */
+  let overlay = document.getElementById("admin-chat-detail-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "admin-chat-detail-overlay";
+    overlay.className = "admin-chat-detail-overlay";
+    overlay.innerHTML = `
+      <div class="admin-chat-detail-panel">
+        <div class="admin-chat-detail-header">
+          <button class="admin-chat-detail-back" onclick="closeAdminChatDetail()" aria-label="Wapas">←</button>
+          <div class="admin-chat-detail-title-wrap">
+            <div class="admin-chat-detail-title" id="admin-chat-detail-title">Chat</div>
+            <div class="admin-chat-detail-sub" id="admin-chat-detail-sub"></div>
+          </div>
+          <div class="admin-chat-detail-badge">👁 Admin View</div>
+        </div>
+        <div class="admin-chat-detail-messages" id="admin-chat-detail-messages">
+          <p style="text-align:center;color:#888;font-size:13px;padding:20px;">⏳ Messages load ho rahi hain...</p>
+        </div>
+        <div class="admin-chat-detail-footer">
+          <span style="font-size:11px;color:#94a3b8;">⚠️ Admin read-only view — aap yahan message nahi bhej sakte.</span>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    /* Close on backdrop tap */
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeAdminChatDetail();
+    });
+  }
+
+  /* Set header info */
+  const titleEl = document.getElementById("admin-chat-detail-title");
+  const subEl   = document.getElementById("admin-chat-detail-sub");
+  if (titleEl) titleEl.textContent = adminViewUsername + " ↔ " + otherName;
+  if (subEl)   subEl.textContent   = "Chat ID: " + chatId;
+
+  /* Show overlay */
+  overlay.classList.add("open");
+  document.body.style.overflow = "hidden";
+
+  /* Fetch messages from Firebase */
+  const msgContainer = document.getElementById("admin-chat-detail-messages");
+  if (msgContainer) {
+    msgContainer.innerHTML = `<p style="text-align:center;color:#888;font-size:13px;padding:30px;">⏳ Messages load ho rahi hain...</p>`;
+  }
+
+  db.ref("chats/" + chatId).orderByChild("timestamp").once("value")
+    .then((snap) => {
+      if (!msgContainer) return;
+
+      if (!snap.exists()) {
+        msgContainer.innerHTML = `
+          <div style="text-align:center;padding:40px 20px;">
+            <div style="font-size:36px;margin-bottom:10px;">📭</div>
+            <p style="color:#888;font-size:13px;">Is chat mein abhi koi message nahi hai.</p>
+          </div>`;
+        return;
+      }
+
+      const messages = [];
+      snap.forEach((child) => {
+        messages.push({ key: child.key, ...child.val() });
+      });
+
+      if (messages.length === 0) {
+        msgContainer.innerHTML = `
+          <div style="text-align:center;padding:40px 20px;">
+            <div style="font-size:36px;margin-bottom:10px;">📭</div>
+            <p style="color:#888;font-size:13px;">Is chat mein abhi koi message nahi hai.</p>
+          </div>`;
+        return;
+      }
+
+      msgContainer.innerHTML = messages.map((msg) => {
+        const isSenderLeft = msg.senderID === adminViewUsername;
+        const timeStr      = formatChatTime(msg.timestamp);
+        const type         = msg.type || "text";
+        let contentHTML    = "";
+
+        if (type === "audio") {
+          contentHTML = `<audio controls src="${escapeHtml(msg.audioUrl || "")}" style="max-width:220px;border-radius:8px;display:block;"></audio>`;
+        } else if (type === "image") {
+          contentHTML = `<img src="${escapeHtml(msg.fileUrl || "")}" alt="Image" style="max-width:200px;max-height:200px;border-radius:8px;display:block;object-fit:cover;" onerror="this.style.display='none'">`;
+        } else if (type === "document") {
+          contentHTML = `<a href="${escapeHtml(msg.fileUrl || "")}" target="_blank" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;"><span style="font-size:22px;">📄</span><span style="font-size:13px;font-weight:600;">${escapeHtml(msg.fileName || "Document")}</span></a>`;
+        } else if (type === "location") {
+          contentHTML = `<a href="${escapeHtml(msg.locationUrl || "#")}" target="_blank" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;"><span style="font-size:22px;">📍</span><span style="font-size:13px;font-weight:600;">Location dekhuun</span></a>`;
+        } else {
+          contentHTML = `<span style="font-size:14px;line-height:1.45;word-break:break-word;">${escapeHtml(msg.text || "")}</span>`;
+        }
+
+        const seenTick = isSenderLeft && msg.seen !== undefined
+          ? `<span style="font-size:10px;margin-left:4px;color:${msg.seen ? "#60A5FA" : "#aaa"};">${msg.seen ? "✓✓" : "✓"}</span>`
+          : "";
+
+        return `
+          <div class="acd-bubble-wrap ${isSenderLeft ? "acd-mine" : "acd-theirs"}">
+            <div class="acd-sender-label">${escapeHtml(msg.senderID || "")}</div>
+            <div class="acd-bubble ${isSenderLeft ? "acd-bubble-mine" : "acd-bubble-theirs"}">
+              ${contentHTML}
+            </div>
+            <div class="acd-meta">${escapeHtml(timeStr)}${seenTick}</div>
+          </div>`;
+      }).join("");
+
+      /* Scroll to bottom */
+      msgContainer.scrollTop = msgContainer.scrollHeight;
+    })
+    .catch((err) => {
+      console.error("Admin chat detail load error:", err);
+      if (msgContainer) {
+        msgContainer.innerHTML = `
+          <div style="text-align:center;padding:30px 20px;">
+            <div style="font-size:32px;margin-bottom:8px;">⚠️</div>
+            <p style="color:#888;font-size:13px;">Messages load nahi ho sake. Internet check karein.</p>
+          </div>`;
+      }
+    });
+}
+
+function closeAdminChatDetail() {
+  const overlay = document.getElementById("admin-chat-detail-overlay");
+  if (overlay) overlay.classList.remove("open");
+  document.body.style.overflow = "";
 }
 
 /* ─── Image helpers ──────────────────────────────────────────── */

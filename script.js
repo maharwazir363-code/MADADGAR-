@@ -2420,24 +2420,23 @@ async function _resizeImageToBase64(file, maxDim, quality) {
     reader.readAsDataURL(file);
   });
 }
-// --- Attachment Handlers ---
+// --- Updated Attachment Handlers ---
 
 function attachFile() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*'; // Sirf photos ke liye
+    input.accept = 'image/*';
     input.onchange = e => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        // Yahan file ko Firebase Storage/Database mein bhejne ka logic
-        // Filhal hum image ka path ya URL bhej rahe hain
-        alert("File select ho gayi, ab uploading shuru...");
-        
-        // Aapka purana function jo image process karta hai
-        _resizeImageToBase64(file, 800, 0.7).then(base64 => {
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64 = event.target.result;
+            // Direct message bhej rahe hain
             sendAttachmentMessage("image", base64);
-        });
+        };
+        reader.readAsDataURL(file);
     };
     input.click();
 }
@@ -2448,26 +2447,27 @@ function sendLocation() {
             const mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
             sendAttachmentMessage("location", mapUrl);
         });
-    } else {
-        alert("Location support nahi mil raha.");
     }
 }
 
-function startVoiceRecord() {
-    alert("Voice recording feature abhi set karna hai, kyunke browser permissions chahiye.");
-    // Aap yahan apna purana MediaRecorder wala code laga sakte hain
-}
-
+// Ye function aapke pehle wale sendMessage ki tarah kaam karega
 function sendAttachmentMessage(type, content) {
     const chatRoomID = state.activeChat;
-    if (!chatRoomID) return;
+    if (!chatRoomID) {
+        alert("Pehle kisi chat ko open karein!");
+        return;
+    }
 
     db.ref("chats/" + chatRoomID).push({
         senderID: state.user.username,
-        type: type, // 'image', 'location', ya 'voice'
+        type: type,
         text: content,
         timestamp: firebase.database.ServerValue.TIMESTAMP,
         seen: false
+    }).then(() => {
+        console.log("Message sent successfully!");
+    }).catch(err => {
+        console.error("Error sending:", err);
     });
 }
 

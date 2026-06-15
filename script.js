@@ -2420,55 +2420,241 @@ async function _resizeImageToBase64(file, maxDim, quality) {
     reader.readAsDataURL(file);
   });
 }
-// --- Updated Attachment Handlers ---
 
-function attachFile() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = e => {
-        const file = e.target.files[0];
-        if (!file) return;
+/* ─── Attachment / Media Handlers ──────────────────────────── */
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const base64 = event.target.result;
-            // Direct message bhej rahe hain
-            sendAttachmentMessage("image", base64);
-        };
-        reader.readAsDataURL(file);
-    };
-    input.click();
-}
+/**
+ * sendAttachmentMessage — Firebase mein media message push karta hai.
+ * FIXES:
+ *   1. _chatRoomID use karta hai (state.activeChat sirf receiver ka username hai, room ID nahi)
+ *   2. Har type ke liye sahi field name use karta hai (fileUrl, locationUrl, audioUrl)
+ *   3. chat_rooms metadata (lastMessage, unread count) update karta hai
+ */
+function sendAttachmentMessage(type, content, extraData) {
+    extraData = extraData || {};
 
-function sendLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(pos => {
-            const mapUrl = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
-            sendAttachmentMessage("location", mapUrl);
-        });
-    }
-}
-
-// Ye function aapke pehle wale sendMessage ki tarah kaam karega
-function sendAttachmentMessage(type, content) {
-    const chatRoomID = state.activeChat;
-    if (!chatRoomID) {
-        alert("Pehle kisi chat ko open karein!");
+    if (!state.user || !_chatRoomID) {
+        alert("Pehle kisi se chat khulein!");
         return;
     }
 
-    db.ref("chats/" + chatRoomID).push({
-        senderID: state.user.username,
-        type: type,
-        text: content,
+    var me       = state.user.username;
+    var myName   = state.user.fullName || me;
+    var receiver = state.activeChat || "";
+    if (!receiver) { alert("Chat room nahi mili!"); return; }
+
+    var msgData = {
+        senderID:  me,
+        type:      type,
         timestamp: firebase.database.ServerValue.TIMESTAMP,
-        seen: false
-    }).then(() => {
-        console.log("Message sent successfully!");
-    }).catch(err => {
-        console.error("Error sending:", err);
-    });
+        seen:      false
+    };
+
+    var lastMsgPreview = "";
+
+    if (type === "image") {
+        msgData.fileUrl   = content;
+        lastMsgPreview    = "📷 Image";
+    } else if (type === "location") {
+        msgData.locationUrl = content;
+        msgData.text        = "📍 Location";
+        lastMsgPreview      = "📍 Location";
+    } else if (type === "document") {
+        msgData.fileUrl    = content;
+        msgData.fileName   = extraData.fileName || "Document";
+        msgData.text       = "📄 " + (extraData.fileName || "Document");
+        lastMsgPreview     = "📄 " + (extraData.fileName || "Document");
+    } else if (type === "audio") {
+        msgData.audioUrl   = content;
+        msgData.text       = "🎤 Voice message";
+        lastMsgPreview     = "🎤 Voice message";
+    }
+
+    db.ref("chats/" + _chatRoomID).push(msgData)
+        .then(function() {
+            /* chat_rooms update — same as sendMessage() karta hai */
+            var receiverNameEl = document.getElementById("chat-user-name");
+            var receiverName   = receiverNameEl ? receiverNameEl.innerText : receiver;
+
+            db.ref("chat_rooms/" + _chatRoomID).update({
+                participants:     ( function(o){ o[me] = true; o[receiver] = true; return o; } )( {} ),
+                participantNames: ( function(o){ o[me] = myName; o[receiver] = receiverName; return o; } )( {} ),
+                lastMessage:      lastMsgPreview,
+                lastTimestamp:    firebase.database.ServerValue.TIMESTAMP
+            }).catch(function(){});
+
+            db.ref("chat_rooms/" + _chatRoomID + "/unread/" + receiver)
+                .transaction(function(c){ return (c || 0) + 1; })
+                .catch(function(){});
+        })
+        .catch(function(err) {
+            console.error("sendAttachmentMessage error:", err);
+            showToast("Message send nahi hua. Phir koshish karein.", "error");
+        });
 }
 
- 
+/**
+ * attachFile — 📎 button handler
+ * Images ko resize karke base64 mein compress karta hai.
+ * Documents (PDF, Word, txt) ko bhi handle karta hai.
+ */
+function attachFile() {
+    if (!state.user || !_chatRoomID) {
+        alert("Pehle kisi se chat khulein!");
+        return;
+    }
+
+    var input    = document.createElement("input");
+    input.type   = "file";
+    input.accept = "image/*,application/pdf,.doc,.docx,.txt,.xls,.xlsx";
+
+    input.onchange = async function(e) {
+        var file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        var isImage = file.type.startsWith("image/");
+
+        if (isImage) {
+            showToast("📷 Image compress ho rahi hai...", "success", 2500);
+            try {
+                var base64 = await _resizeImageToBase64(file, 800, 0.75);
+                sendAttachmentMessage("image", base64);
+            } catch(err) {
+                console.error("Image resize error:", err);
+                showToast("Image process nahi ho saki.", "error");
+            }
+        } else {
+            /* Document — raw base64 as data URL */
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                sendAttachmentMessage("document", ev.target.result, { fileName: file.name });
+            };
+            reader.onerror = function() {
+                showToast("File read nahi ho saki.", "error");
+            };
+            reader.readAsDataURL(file);
+        }
+
+        /* Reset input so same file can be re-selected */
+        e.target.value = "";
+    };
+
+    input.click();
+}
+
+/**
+ * sendLocation — 📍 button handler
+ * GPS coordinates leta hai aur Google Maps link chat mein bhejta hai.
+ */
+function sendLocation() {
+    if (!state.user || !_chatRoomID) {
+        alert("Pehle kisi se chat khulein!");
+        return;
+    }
+    if (!navigator.geolocation) {
+        showToast("Aap ke device mein location support nahi hai.", "error");
+        return;
+    }
+
+    showToast("📍 Location le raha hai...", "success", 4000);
+
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+            var url = "https://www.google.com/maps?q=" +
+                      pos.coords.latitude + "," + pos.coords.longitude;
+            sendAttachmentMessage("location", url);
+        },
+        function(err) {
+            console.warn("Geolocation error:", err.code, err.message);
+            var msg = "Location nahi mili.";
+            if (err.code === 1) msg = "Location permission deny ki gayi hai. Browser settings check karein.";
+            else if (err.code === 2) msg = "Location signal nahi mila. Dobara try karein.";
+            else if (err.code === 3) msg = "Location timeout ho gayi. Dobara try karein.";
+            showToast(msg, "error");
+        },
+        { timeout: 10000, maximumAge: 60000 }
+    );
+}
+
+/**
+ * startVoiceRecord — 🎤 button handler
+ * Pehli dafa dabane par recording shuru, doosri dafa dabane par band.
+ * Audio blob ko base64 mein convert karke chat mein bhejta hai.
+ */
+function startVoiceRecord() {
+    if (!state.user || !_chatRoomID) {
+        alert("Pehle kisi se chat khulein!");
+        return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast("Aap ke browser mein voice recording support nahi hai.", "error");
+        return;
+    }
+
+    /* Mic button dhundho */
+    var micBtn = document.querySelector('#chat-input-toolbar button[onclick="startVoiceRecord()"]');
+
+    /* ── Agar pehle se record ho raha hai toh band karo ── */
+    if (_isRecording) {
+        if (_mediaRecorder && _mediaRecorder.state !== "inactive") {
+            _mediaRecorder.stop();
+        }
+        return;
+    }
+
+    /* ── Recording shuru karo ── */
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function(stream) {
+            _audioChunks  = [];
+            _isRecording  = true;
+            _mediaRecorder = new MediaRecorder(stream);
+
+            if (micBtn) { micBtn.textContent = "⏹️ 0s"; micBtn.style.color = "red"; }
+            showToast("🎤 Recording shuru... dobara dabayein rokne ke liye", "success", 60000);
+
+            var secs = 0;
+            _recTimerInterval = setInterval(function() {
+                secs++;
+                if (micBtn) micBtn.textContent = "⏹️ " + secs + "s";
+                if (secs >= 60) {
+                    /* Auto-stop at 60 seconds */
+                    if (_mediaRecorder && _mediaRecorder.state !== "inactive") {
+                        _mediaRecorder.stop();
+                    }
+                }
+            }, 1000);
+
+            _mediaRecorder.ondataavailable = function(e) {
+                if (e.data && e.data.size > 0) _audioChunks.push(e.data);
+            };
+
+            _mediaRecorder.onstop = function() {
+                clearInterval(_recTimerInterval);
+                _isRecording = false;
+                if (micBtn) { micBtn.textContent = "🎤"; micBtn.style.color = ""; }
+
+                /* Microphone track band karo */
+                stream.getTracks().forEach(function(t) { t.stop(); });
+
+                /* Blob → base64 data URL → Firebase */
+                var blob   = new Blob(_audioChunks, { type: "audio/webm" });
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    sendAttachmentMessage("audio", ev.target.result);
+                };
+                reader.onerror = function() {
+                    showToast("Audio save nahi ho saka.", "error");
+                };
+                reader.readAsDataURL(blob);
+            };
+
+            _mediaRecorder.start();
+        })
+        .catch(function(err) {
+            _isRecording = false;
+            clearInterval(_recTimerInterval);
+            if (micBtn) { micBtn.textContent = "🎤"; micBtn.style.color = ""; }
+            console.error("Microphone error:", err);
+            showToast("Microphone access nahi mila. Permission dein.", "error");
+        });
+}
